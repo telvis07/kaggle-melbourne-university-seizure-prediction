@@ -21,21 +21,6 @@ process_windows <- function(data, id, target, secs_per_window=10) {
   trainset = matrix(,i_num_windows,(16*6+3))
   trainset = as.data.frame(trainset)
   
-  sum_list = as.numeric(apply(df, 2, sum))
-  mean_list = as.numeric(apply(df, 2, mean))
-  median_list = as.numeric(apply(df, 2, median))
-  sem_list = as.numeric(apply(df, 2, function (x) {sd(x)/length(x)}))
-  abssum_list = as.numeric(apply(df, 2, function (x) {sum(abs(x))}))
-  min_list = as.numeric(apply(df, 2, min))
-  max_list = as.numeric(apply(df, 2, max)) 
-  
-  v_mean <- c()
-  v_median <- c()
-  v_sem <- c()
-  v_abssum <- c()
-  v_min <- c()
-  v_max <- c()
-  
   # window_id, min, max, mean, median, 
   for (i_offset in seq(1, nSamplesSegment, i_samples_per_window)) {
     v_mean <- c()
@@ -44,6 +29,8 @@ process_windows <- function(data, id, target, secs_per_window=10) {
     v_abssum <- c()
     v_min <- c()
     v_max <- c()
+    
+    # TODO: check for data drop-out, where values across all channels 
     for (i_channel in channelIndices) {
       print(sprintf("window_id: %s, channel_id: %s", i_window_id, i_channel))
       print(sprintf("i_offset: %s, i_offset:end : %s", i_offset, 
@@ -104,11 +91,8 @@ process_windows_parallel <- function(inputdir="../data/train_1",
     trainset <- mclapply(filenames, process_file_windows_single, mc.cores = cores)
   })[3]
   print(sprintf("runtime: %s", runtime))
-  print(trainset[[1]][1])
-  print(trainset[[1]][2])
-  df <- data.frame(matrix(unlist(trainset), 
-                          nrow=length(trainset), byrow=T), 
-                   stringsAsFactors = F)
+  print(sprintf("length: %s", length(trainset)))
+  df <- do.call("rbind", trainset)
   
   v_names <- c("id", "target", "window_id",
                paste("min_", 1:16, sep=""), 
@@ -117,7 +101,7 @@ process_windows_parallel <- function(inputdir="../data/train_1",
                paste("median_", 1:16, sep=""), 
                paste("sem_", 1:16, sep=""), 
                paste("abssum_", 1:16, sep=""))
-  print(sprintf("Dimensions: %s", dim(df)))
+  print(sprintf("Dimensions: %s", paste(dim(df), collapse="x ")))
   colnames(df) <- v_names
   print(sprintf("Writing features to : %s", output_filename))
   write.table(df, output_filename,
