@@ -41,10 +41,8 @@ process_parallel <- function(inputdir="../data/train_1",
   filenames <- list.files(inputdir, pattern="*.mat", full.names=TRUE)
   runtime <- system.time({
     trainset <- mclapply(filenames, process_file_single, mc.cores = cores)
-    # trainset <- lapply(filenames, process_file_single)
   })[3]
   print(sprintf("runtime: %s", runtime))
-  # trainset <- as.data.frame(trainset)
   print(trainset[[1]][1])
   print(trainset[[1]][2])
   df <- data.frame(matrix(unlist(trainset), 
