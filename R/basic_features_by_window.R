@@ -1,5 +1,9 @@
 # extract features for each window in each file.
 library("parallel")
+library("R.matlab")
+library("ggplot2")
+library("gridExtra")
+library("dplyr")
 
 process_windows <- function(data, id, target, n_seg_num, secs_per_window=10) {
   # (2) nSamplesSegment: total number of time samples (number of rows in the data field).
@@ -11,21 +15,21 @@ process_windows <- function(data, id, target, n_seg_num, secs_per_window=10) {
   iEEGsamplingRate <- data$dataStruct[[2]][1]
   nSamplesSegment <- data$dataStruct[[3]][1]
   channelIndices <- data$dataStruct[[4]]
-  i_num_channels <- length(channelIndices)
+  n_num_channels <- length(channelIndices)
   
-  i_num_windows <- (nSamplesSegment/iEEGsamplingRate) / secs_per_window
+  n_num_windows <- (nSamplesSegment/iEEGsamplingRate) / secs_per_window
   
   # nsamples for a 10 second window
-  i_samples_per_window <- iEEGsamplingRate * secs_per_window
-  i_window_id <- 0
+  n_samples_per_window <- iEEGsamplingRate * secs_per_window
+  n_window_id <- 0
   
   # data (16 channels, 6 stats) + (id, target, window_id, segnum)
-  trainset = matrix(,i_num_windows,(16*6+4))
+  trainset = matrix(,n_num_windows,(16*6+4))
   trainset = as.data.frame(trainset)
   
   # window_id, min, max, mean, median, 
-  for (i_offset in seq(1, nSamplesSegment, i_samples_per_window)) {
-    i_window_id <- i_window_id + 1
+  for (n_offset in seq(1, nSamplesSegment, n_samples_per_window)) {
+    n_window_id <- n_window_id + 1
     
     v_mean <- c()
     v_median <- c()
@@ -35,11 +39,11 @@ process_windows <- function(data, id, target, n_seg_num, secs_per_window=10) {
     v_max <- c()
     
     # beginning and end of window
-    i_offset_end <- i_offset+i_samples_per_window - 1
+    n_offset_end <- n_offset+n_samples_per_window - 1
     
     # check for data drop-out, where values across all channels are 0
-    window_all_channels <- df_eeg[i_offset:i_offset_end, ]
-    if (! all(dim(window_all_channels) == c(i_samples_per_window, i_num_channels))){
+    window_all_channels <- df_eeg[n_offset:n_offset_end, ]
+    if (! all(dim(window_all_channels) == c(n_samples_per_window, n_num_channels))){
       stop(sprintf("[process_windows] %s: Bad Dimensions: %s", id, paste(dim(window_all_channels), collapse="x ")))                            
     }
     
@@ -55,36 +59,36 @@ process_windows <- function(data, id, target, n_seg_num, secs_per_window=10) {
     v_dropout_rows <- (li_absum_by_row == FALSE)
     
     if (n_dropout_rows > 3500) {
-      print(sprintf("[process_windows] - too many dropout rows in window: %s", i_window_id))
-      trainset[i_window_id,] = c(id,
+      print(sprintf("[process_windows] - too many dropout rows in window: %s", n_window_id))
+      trainset[n_window_id,] = c(id,
                                  target,
-                                 i_window_id,
+                                 n_window_id,
                                  n_seg_num,
-                                 rep(NA, i_num_channels),
-                                 rep(NA, i_num_channels),
-                                 rep(NA, i_num_channels),
-                                 rep(NA, i_num_channels),
-                                 rep(NA, i_num_channels),
-                                 rep(NA, i_num_channels))
+                                 rep(NA, n_num_channels),
+                                 rep(NA, n_num_channels),
+                                 rep(NA, n_num_channels),
+                                 rep(NA, n_num_channels),
+                                 rep(NA, n_num_channels),
+                                 rep(NA, n_num_channels))
       next
       
     } 
     
-    for (i_channel in channelIndices) {
+    for (n_channel in channelIndices) {
       # 10-sec window for channel
-      window <- df_eeg[i_offset:i_offset_end, i_channel]
+      window <- df_eeg[n_offset:n_offset_end, n_channel]
       
       if( n_dropout_rows > 0) {
         # remove dropout rows
         window <- window[! v_dropout_rows]
       }
       
-      if (length(window) != (i_samples_per_window - n_dropout_rows)) {
-        print(sprintf("window_id: %s, channel_id: %s", i_window_id, i_channel))
-        print(sprintf("i_offset: %s, i_offset:end : %s", i_offset, 
-                      i_offset+i_samples_per_window))
+      if (length(window) != (n_samples_per_window - n_dropout_rows)) {
+        print(sprintf("window_id: %s, channel_id: %s", n_window_id, n_channel))
+        print(sprintf("n_offset: %s, n_offset:end : %s", n_offset, 
+                      n_offset+n_samples_per_window))
         stop(sprintf("[process_windows] - invalid window length. Expected: %s, Found: %s",
-                     i_samples_per_window - n_dropout_rows,
+                     n_samples_per_window - n_dropout_rows,
                      length(window)))
       }
       
@@ -96,9 +100,9 @@ process_windows <- function(data, id, target, n_seg_num, secs_per_window=10) {
       v_sem <- c(v_sem, sd(window)/length(window))
       v_abssum <- c(v_abssum, sum(abs(window)))
     }
-    trainset[i_window_id,] = c(id,
+    trainset[n_window_id,] = c(id,
                                target,
-                               i_window_id,
+                               n_window_id,
                                n_seg_num,
                                v_min,
                                v_max,
@@ -165,15 +169,19 @@ load_window_features <- function(output_filename="../data/features/train_1_windo
   df
 }
 
-library(ggplot2)
-library(gridExtra)
 
-plot_feature_for_channel <- function(df, offset=4, channel=1, label="min") {
-  datums <- data.frame(channel_data=df[,offset+channel],
+plot_feature_for_channel <- function(df, offset, channel=1, label="min") {
+  n_colnum <- offset + channel
+  n_mean <- mean(df[,n_colnum], na.rm = T)
+  n_std <- sd(df[,n_colnum], na.rm = T)
+  datums <- data.frame(channel_data=df[,n_colnum],
                        times=seq(length(v_channel_data)),
                        target=df$target)
+
+  # datums <- transform(datums, channel_data=(channel_data-n_mean)/n_std)
   obj <- ggplot(datums, aes(x=times, y=channel_data, color=target)) + 
     geom_line() + 
+    ylab(sprintf("%s-%s", label, channel)) +
     theme(axis.title.x=element_blank(),
           axis.text.x=element_blank(),
           axis.ticks.x=element_blank(),
@@ -181,24 +189,51 @@ plot_feature_for_channel <- function(df, offset=4, channel=1, label="min") {
   obj
 }
 
-plot_feature_min_channels <- function(df, num_channels=16) {
+plot_feature_min_channels <- function(df, num_channels=16, output_png="min_eeg_channels.png") {
   offset=4
   l_plots <- list()
   
   for (n_channel in seq(num_channels)) {
-    print(length(l_plots))
-    plt <- plot_feature_for_channel(df, offset = offset, channel = n_channel)
+    plt <- plot_feature_for_channel(df, offset = offset, channel = n_channel, label="min")
     l_plots <- c(l_plots, list(plt))
-    
   }
   
   print(length(l_plots))
+  do.call(grid.arrange, c(l_plots, top="MIN per iEEG channel ('interical', 'preictal')"))
+  dev.copy(png, width = 960, height = 960, units = "px", output_png)
+  dev.off()
   l_plots
-  # p <- grid.arrange(unlist(v_plots), top="MIN per iEEG channel")
-  # p
 }
 
+plot_feature_max_channels <- function(df, num_channels=16, output_png="max_eeg_channels.png") {
+  offset=20
+  l_plots <- list()
+  
+  for (n_channel in seq(num_channels)) {
+    plt <- plot_feature_for_channel(df, offset = offset, channel = n_channel, label = "max" )
+    l_plots <- c(l_plots, list(plt))
+  }
+  
+  print(length(l_plots))
+  do.call(grid.arrange, c(l_plots, top="MAX per iEEG channel ('interical', 'preictal')"))
+  dev.copy(png, width = 960, height = 960, units = "px", output_png)
+  dev.off()
+  l_plots
+}
 
-
-
+plot_feature_mean_channels <- function(df, num_channels=16, output_png="mean_eeg_channels.png") {
+  offset=36
+  l_plots <- list()
+  
+  for (n_channel in seq(num_channels)) {
+    plt <- plot_feature_for_channel(df, offset = offset, channel = n_channel, label="mean" )
+    l_plots <- c(l_plots, list(plt))
+  }
+  
+  print(length(l_plots))
+  do.call(grid.arrange, c(l_plots, top="MEAN per iEEG channel ('interical', 'preictal')"))
+  dev.copy(png, width = 960, height = 960, units = "px", output_png)
+  dev.off()
+  l_plots
+}
 
