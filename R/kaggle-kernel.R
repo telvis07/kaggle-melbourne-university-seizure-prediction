@@ -1,37 +1,40 @@
-# extract features for each window in each file.
-library(parallel)
-library(R.matlab)
-library(ggplot2)
-library(gridExtra)
-library(dplyr)
+# # This R environment comes with all of CRAN preinstalled, as well as many other helpful packages
+# # The environment is defined by the kaggle/rstats docker image: https://github.com/kaggle/docker-rstats
+# # For example, here's several helpful packages to load in 
 
-source("correlation_features.R")
-# TODO:
-# library(RcppRoll)
+# library(ggplot2) # Data visualization
+# library(readr) # CSV file I/O, e.g. the read_csv function
+
+# # Input data files are available in the "../input/" directory.
+# # For example, running this (by clicking run or pressing Shift+Enter) will list the files in the input directory
+
+# system("ls ../input/train_1")
+
+# # Any results you write to the current directory are saved as output.
+
+
+# extract features for each window in each file.
+library("parallel")
+library("R.matlab")
+library("ggplot2")
+library("gridExtra")
+library("dplyr")
 
 process_windows <- function(data, id, target, n_seg_num, secs_per_window=10) {
-  # (1) eeg data
   # (2) nSamplesSegment: total number of time samples (number of rows in the data field).
   # (3) iEEGsamplingRate: data sampling rate, i.e. the number of data samples 
   #   representing 1 second of EEG data. 
   # (4) channelIndices: an array of the electrode indexes corresponding to 
   #     the columns in the data field.
   df_eeg = as.data.frame(data[[1]][[1]])
-  
-  # fs - 400Hz (samples/second) 
   iEEGsamplingRate <- data$dataStruct[[2]][1]
-  # n - 240000
   nSamplesSegment <- data$dataStruct[[3]][1]
-  # 16 channels
   channelIndices <- data$dataStruct[[4]]
   n_num_channels <- length(channelIndices)
   
-  # samples / (samples/second) = seconds
-  # seconds / (seconds/window) = number of windows
   n_num_windows <- (nSamplesSegment/iEEGsamplingRate) / secs_per_window
   
   # nsamples for a 10 second window
-  # (samples/second) * (seconds/window) = samples/window 
   n_samples_per_window <- iEEGsamplingRate * secs_per_window
   n_window_id <- 0
   
@@ -124,13 +127,11 @@ process_windows <- function(data, id, target, n_seg_num, secs_per_window=10) {
                                v_abssum)
     
   }
-
+  
   trainset
 }
 
 process_file_windows_single <- function(filename) {
-  # trainset <- process_file_windows_single("../data/train_1/1_999_0.mat")
-
   # parse the 'preictal, interical' label
   data = readMat(filename)
   s_base_filename <- basename(filename)
@@ -140,15 +141,20 @@ process_file_windows_single <- function(filename) {
   n_seg_num <- as.numeric(v_filename_parts[2])
   
   # calculate window features
-  # trainset <- process_windows(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num)
-  trainset <- compute_corr_for_windows(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num)
+  trainset <- process_windows(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num)
+  
   trainset
 }
 
-process_windows_parallel <- function(inputdir="../data/train_1.small/",
-                             output_filename="../data/features/train_1_windows_set.txt",
-                             cores=4) {
+process_windows_parallel <- function(inputdir="../input/train_1.small/",
+                                     output_filename="../data/features/train_1_windows_set.txt",
+                                     cores=4,
+                                     limit=0) {
   filenames <- list.files(inputdir, pattern="*.mat", full.names=TRUE)
+  if (limit > 0) {
+    filenames = head(filenames, limit)
+  }
+  
   runtime <- system.time({
     trainset <- mclapply(filenames, process_file_windows_single, mc.cores = cores)
   })[3]
@@ -169,7 +175,7 @@ process_windows_parallel <- function(inputdir="../data/train_1.small/",
   # sort by target then segment number
   ord = order(df$target, df$segnum, decreasing = F)
   df <- df[ord,]
-
+  
   # write to file
   print(sprintf("Writing features to : %s", output_filename))
   write.table(df, output_filename,
@@ -181,7 +187,7 @@ load_window_features <- function(output_filename="../data/features/train_1_windo
   df <- read.table(output_filename, header=T, stringsAsFactors = F)
   df$segnum <- as.numeric(df$segnum)
   df$target <- as.numeric(df$target)
-
+  
   # sort by target then segment number
   ord = order(df$target, df$segnum, decreasing = F)
   df <- df[ord,]
@@ -196,11 +202,11 @@ load_window_features <- function(output_filename="../data/features/train_1_windo
 plot_feature_for_channel <- function(df, offset, channel=1, label="min") {
   n_colnum <- offset + channel
   v_channel_data <- as.numeric(df[,n_colnum])
-
+  
   datums <- data.frame(channel_data=v_channel_data,
                        times=seq(length(v_channel_data)),
                        target=df$target)
-
+  
   obj <- ggplot(datums, aes(x=times, y=channel_data, color=target)) + 
     geom_line() + 
     ylab(sprintf("%s-%s", label, channel)) +
@@ -211,37 +217,6 @@ plot_feature_for_channel <- function(df, offset, channel=1, label="min") {
   obj
 }
 
-plot_feature_min_channels <- function(df, num_channels=16, output_png="min_eeg_channels.png") {
-  offset=4
-  l_plots <- list()
-  
-  for (n_channel in seq(num_channels)) {
-    plt <- plot_feature_for_channel(df, offset = offset, channel = n_channel, label="min")
-    l_plots <- c(l_plots, list(plt))
-  }
-  
-  print(length(l_plots))
-  do.call(grid.arrange, c(l_plots, top="MIN per iEEG channel ('interical', 'preictal')"))
-  dev.copy(png, width = 960, height = 960, units = "px", output_png)
-  dev.off()
-  output_png
-}
-
-plot_feature_max_channels <- function(df, num_channels=16, output_png="max_eeg_channels.png") {
-  offset=20
-  l_plots <- list()
-  
-  for (n_channel in seq(num_channels)) {
-    plt <- plot_feature_for_channel(df, offset = offset, channel = n_channel, label = "max" )
-    l_plots <- c(l_plots, list(plt))
-  }
-  
-  print(length(l_plots))
-  do.call(grid.arrange, c(l_plots, top="MAX per iEEG channel ('interical', 'preictal')"))
-  dev.copy(png, width = 960, height = 960, units = "px", output_png)
-  dev.off()
-  output_png
-}
 
 plot_feature_mean_channels <- function(df, num_channels=16, output_png="mean_eeg_channels.png") {
   offset=36
@@ -259,62 +234,12 @@ plot_feature_mean_channels <- function(df, num_channels=16, output_png="mean_eeg
   output_png
 }
 
-
-plot_feature_median_channels <- function(df, num_channels=16, output_png="median_eeg_channels.png") {
-  offset=52
-  l_plots <- list()
-  
-  for (n_channel in seq(num_channels)) {
-    plt <- plot_feature_for_channel(df, offset = offset, channel = n_channel, label="mean" )
-    l_plots <- c(l_plots, list(plt))
-  }
-  
-  print(length(l_plots))
-  do.call(grid.arrange, c(l_plots, top="MEDIAN per iEEG channel ('interical', 'preictal')"))
-  dev.copy(png, width = 960, height = 960, units = "px", output_png)
-  dev.off()
-  output_png
-}
-
-
-plot_feature_sem_channels <- function(df, num_channels=16, output_png="sem_eeg_channels.png") {
-  offset=68
-  l_plots <- list()
-  
-  for (n_channel in seq(num_channels)) {
-    plt <- plot_feature_for_channel(df, offset = offset, channel = n_channel, label="mean" )
-    l_plots <- c(l_plots, list(plt))
-  }
-  
-  print(length(l_plots))
-  do.call(grid.arrange, c(l_plots, top="SEM per iEEG channel ('interical', 'preictal')"))
-  dev.copy(png, width = 960, height = 960, units = "px", output_png)
-  dev.off()
-  output_png
-}
-
-plot_feature_absum_channels <- function(df, num_channels=16, output_png="absum_eeg_channels.png") {
-  offset=84
-  l_plots <- list()
-  
-  for (n_channel in seq(num_channels)) {
-    plt <- plot_feature_for_channel(df, offset = offset, channel = n_channel, label="mean" )
-    l_plots <- c(l_plots, list(plt))
-  }
-  
-  print(length(l_plots))
-  do.call(grid.arrange, c(l_plots, top="ABSUM per iEEG channel ('interical', 'preictal')"))
-  dev.copy(png, width = 960, height = 960, units = "px", output_png)
-  dev.off()
-  output_png
-}
-
-
 parallel_feature_extractor_example <- function(cores=8,
                                                inputdir="../data/train_1.small/",
-                                               output_filename="../data/features/train_1_windows_set.txt") {
+                                               output_filename="../data/features/train_1_windows_set.txt",
+                                               limit=100) {
   
-  df <- process_windows_parallel(cores=cores, inputdir = inputdir, output_filename = output_filename)
+  df <- process_windows_parallel(cores=cores, inputdir = inputdir, output_filename = output_filename, limit=limit)
   
   df$segnum <- as.numeric(df$segnum)
   df$target <- as.numeric(df$target)
@@ -324,7 +249,20 @@ parallel_feature_extractor_example <- function(cores=8,
   df <- df[ord,]
   
   # Generate mean for each window for each channel
-  plot_filename <- plot_feature_mean_channels(df, output_png="mean_eeg_channels.png")
-
+  plot_filename <- plot_feature_mean_channels(df, output_png="./mean_eeg_channels.png")
+  
   print(sprintf("Created MEAN plot : %s", plot_filename))
 }
+
+
+# run the feature extractor using parallel processes. 
+# limit to 100 files, to speed up running a the kernel (set to 0 to process all files)
+parallel_feature_extractor_example(cores=detectCores(), 
+                                   inputdir="../input/train_1", 
+                                   output_filename="./train_1_windows_set_small.txt", 
+                                   limit=100)
+system("ls ../input/")
+system("ls ../output/")
+
+
+
