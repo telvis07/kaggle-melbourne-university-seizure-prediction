@@ -90,16 +90,13 @@ feat_fft_entropy <- function(window_all_channels, n_samples_per_window=4000, ver
   # sanity check the dimensions   
   print(sprintf("dim(m_chan_t) : %s", paste(dim(m_chan_t), " ")))
   
+  # calc fft for channel data
   m_fft <- fft(m_chan_t)
+  
+  # calculate the magnitude fft values
   m_mags <- abs(m_fft)
-
-  # m_fft <- fft(t(m))
-  # m_mags <- t(abs(m_fft))
-  # 
-  # > entropy.empirical(m_mags, unit="log2")
-  # [1] 1.961536
-  # > -sum(m_mags * log2(m_mags))
-  # [1] NaN
+  
+  # return the 
   entropy.empirical(m_mags, unit="log2")
 }
 
@@ -201,6 +198,80 @@ calc_corr_for_windows <- function(data, id, target, n_seg_num, secs_per_window=1
     
   }
   
+}
+
+
+get_windows_from_file <- function(filename){
+  # plot eignenvectors
+  
+  secs_per_window=10
+  # filename = "../data/train_1/1_999_0.mat"
+  
+  # parse the 'preictal, interical' label
+  data = readMat(filename)
+  s_base_filename <- basename(filename)
+  v_filename_parts <- strsplit(s_base_filename, "_")[[1]]
+  s_target <- v_filename_parts[3]
+  s_target <- gsub(".mat", "", s_target)
+  n_seg_num <- as.numeric(v_filename_parts[2])
+  
+  # 
+  # trainset <- compute_corr_for_windows(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num)
+  df_eeg = as.data.frame(data[[1]][[1]])
+  
+  # fs - 400Hz (samples/second) 
+  iEEGsamplingRate <- data$dataStruct[[2]][1]
+  # n - 240000
+  nSamplesSegment <- data$dataStruct[[3]][1]
+  # 16 channels
+  channelIndices <- data$dataStruct[[4]]
+  n_num_channels <- length(channelIndices)
+  # samples / (samples/second) = seconds
+  # seconds / (seconds/window) = number of windows
+  n_num_windows <- (nSamplesSegment/iEEGsamplingRate) / secs_per_window
+  
+  # nsamples for a 10 second window
+  # (samples/second) * (seconds/window) = samples/window 
+  n_samples_per_window <- iEEGsamplingRate * secs_per_window
+  
+  
+  n_offset <- 1
+  n_offset_end <- n_offset+n_samples_per_window - 1
+  window_all_channels <- df_eeg[n_offset:n_offset_end, ]
+  li_absum_by_row <- as.numeric(apply(window_all_channels, 
+                                      1,
+                                      function (x) sum(abs(x))))
+  n_dropout_rows <- sum(li_absum_by_row == 0)
+  
+  print(sprintf("Num dropout rows : %s", n_dropout_rows))
+  
+  window_all_channels
+}
+
+plot_feat_corr_eigen <- function() {
+
+  window_all_channels_0 <- get_windows_from_file(filename = "../data/train_1/1_999_0.mat")
+  
+  v_eigen_values <- feat_corr_eigen(window_all_channels = window_all_channels_0)
+  
+  plt1 <- ggplot(data.frame(eigenvalues=v_eigen_values, 
+                           num=seq(length(v_eigen_values))), 
+                aes(x=num, y=eigenvalues)) +
+    geom_bar(stat="identity") +
+    labs(title="cor eignenvalues (interical)")
+  
+  
+  window_all_channels_1 <- get_windows_from_file(filename = "../data/train_1/1_100_1.mat")
+  
+  v_eigen_values <- feat_corr_eigen(window_all_channels = window_all_channels_1)
+  
+  plt2 <- ggplot(data.frame(eigenvalues=v_eigen_values, 
+                           num=seq(length(v_eigen_values))), 
+                aes(x=num, y=eigenvalues)) +
+    geom_bar(stat="identity") +
+    labs(title="cor eignenvalues (preictal)")
+  
+  grid.arrange(plt1, plt2)
 }
 
 library(kernlab); data(spam); library(ggplot2)
