@@ -5,7 +5,7 @@ library(ggplot2)
 library(gridExtra)
 library(dplyr)
 
-source("correlation_features.R")
+# source("correlation_features.R")
 # TODO:
 # library(RcppRoll)
 
@@ -140,14 +140,15 @@ process_file_windows_single <- function(filename) {
   n_seg_num <- as.numeric(v_filename_parts[2])
   
   # calculate window features
-  # trainset <- process_windows(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num)
-  trainset <- compute_corr_for_windows(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num)
+  trainset <- process_windows(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num)
   trainset
 }
 
 process_windows_parallel <- function(inputdir="../data/train_1.small/",
-                             output_filename="../data/features/train_1_windows_set.txt",
+                             output_filename="../data/features/train_1_windows_basic_stats.txt",
                              cores=4) {
+  # df <- process_windows_parallel(cores=8, inputdir = "../data/train_1/")
+
   filenames <- list.files(inputdir, pattern="*.mat", full.names=TRUE)
   runtime <- system.time({
     trainset <- mclapply(filenames, process_file_windows_single, mc.cores = cores)
@@ -177,7 +178,7 @@ process_windows_parallel <- function(inputdir="../data/train_1.small/",
   df
 }
 
-load_window_features <- function(output_filename="../data/features/train_1_windows_set.txt") {
+load_window_features <- function(output_filename="../data/features/train_1_windows_basic_stats.txt") {
   df <- read.table(output_filename, header=T, stringsAsFactors = F)
   df$segnum <- as.numeric(df$segnum)
   df$target <- as.numeric(df$target)
