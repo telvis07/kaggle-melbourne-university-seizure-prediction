@@ -1,9 +1,13 @@
 #matlab extractor
-rm(list=ls())
-setwd("/Users/telvis/work/kaggle-melbourne-university-seizure-prediction/R")
+# rm(list=ls())
+# setwd("/Users/telvis/work/kaggle-melbourne-university-seizure-prediction/R")
 
 library(ggplot2)
 library(entropy)
+
+library(caret)
+library(randomForest)
+library(rpart)
 
 
 feat_corr_eigen <- function(window_all_channels, verbose=T) {
@@ -91,7 +95,7 @@ feat_fft_means <- function(window_all_channels, n_samples_per_window=4000, verbo
 feat_fft_mag_entropy <- function(window_all_channels, n_samples_per_window=4000, verbose=T) {
   # transpose the eeg data : N x 16 -> 16 x N
   m_chan_t <- t(window_all_channels)
-
+  
   # sanity check the dimensions   
   print(sprintf("dim(m_chan_t) : %s", paste(dim(m_chan_t), " ")))
   
@@ -301,11 +305,11 @@ train_rf_all_features <- function(trainset, seed=1234, save_model_filename="../d
   training = trainset[ inTrain,]
   testing = trainset[-inTrain,] 
   
-
+  
   modFit <- train(target ~ ., 
                   data=training, 
-                  method="rf", ntree=100,
-                  trControl = trainControl(method="cv"), number=10)
+                  method="rf", ntree=10,
+                  trControl = trainControl(method="cv"), number=5, verbose=TRUE)
   
   # testing
   prediction_rf <- predict(modFit, testing)
@@ -380,14 +384,14 @@ get_first_windows_from_file <- function(filename="../data/train_1/1_999_0.mat"){
 }
 
 plot_feat_corr_eigen <- function() {
-
+  
   window_all_channels_0 <- get_windows_from_file(filename = "../data/train_1/1_999_0.mat")
   
   v_eigen_values <- feat_corr_eigen(window_all_channels = window_all_channels_0)
   
   plt1 <- ggplot(data.frame(eigenvalues=v_eigen_values, 
-                           num=seq(length(v_eigen_values))), 
-                aes(x=num, y=eigenvalues)) +
+                            num=seq(length(v_eigen_values))), 
+                 aes(x=num, y=eigenvalues)) +
     geom_bar(stat="identity") +
     labs(title="cor eigenvalues (interical)")
   
@@ -397,8 +401,8 @@ plot_feat_corr_eigen <- function() {
   v_eigen_values <- feat_corr_eigen(window_all_channels = window_all_channels_1)
   
   plt2 <- ggplot(data.frame(eigenvalues=v_eigen_values, 
-                           num=seq(length(v_eigen_values))), 
-                aes(x=num, y=eigenvalues)) +
+                            num=seq(length(v_eigen_values))), 
+                 aes(x=num, y=eigenvalues)) +
     geom_bar(stat="identity") +
     labs(title="cor eignenvalues (preictal)")
   
@@ -461,4 +465,3 @@ plot_feat_fft_entropy <- function() {
   # 
   # grid.arrange(plt1, plt2)
 }
-
