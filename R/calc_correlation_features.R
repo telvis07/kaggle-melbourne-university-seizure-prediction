@@ -9,8 +9,7 @@ trainset <- trainset[rowSums(is.na(trainset)) == 0,]
 trainset$target <- factor(trainset$target, levels=c(0,1), 
                           labels=c('interictal', 'preictal'))
 
-# sample datums
-# trainset <- sample_data(trainset)
+
 
 # remove rows with NULLs
-train_rf_all_features(trainset = trainset)
+train_rf_all_features.quick(trainset = trainset)

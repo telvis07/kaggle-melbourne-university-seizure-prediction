@@ -1,5 +1,6 @@
 install.packages("ggplot2")
 install.packages("entropy")
+install.packages("dplyr")
 
 install.packages("caret")
 install.packages("randomForest")

@@ -8,6 +8,7 @@ library(entropy)
 library(caret)
 library(randomForest)
 library(rpart)
+library("parallel")
 
 
 feat_corr_eigen <- function(window_all_channels, verbose=T) {
@@ -317,17 +318,21 @@ train_rf_all_features <- function(trainset, seed=1234, save_model_filename="../d
   
   print (table(training$target))
   print (table(testing$target))
+  
 
   modFit <- train(target ~ .,
                   data=training,
-                  method="rf", ntree=10,
-                  trControl = trainControl(method="cv"), number=5, verbose=TRUE)
+                  method="rf", ntree=100,
+                  preProcess=c("center","scale"),
+                  trControl = trainControl(allowParallel=T, method="cv", number=4), 
+                  number=10, verbose=TRUE)
 
+  rf_feature_importance(modFit)
+  
   # training
   prediction_rf <- predict(modFit, training)
   print("Predictions RF:training")
   print(confusionMatrix(prediction_rf, training$target, positive='preictal'))
-  
   
   # testing
   prediction_rf <- predict(modFit, testing)
@@ -339,6 +344,76 @@ train_rf_all_features <- function(trainset, seed=1234, save_model_filename="../d
 
   # return model with all features
   modFit
+}
+
+train_rf_all_features.quick <- function(trainset, seed=1234, save_model_filename="../data/models/train_1_correlation_and_fft.rds") {
+  set.seed(seed)
+  
+  # downsample
+  trainset <- sample_data(trainset)
+  
+  # remove columns that we don't train on
+  trainset <- subset(trainset, select=-c(id, window_id, segnum))
+  
+  print(sprintf("after removing columns: %s, %s", dim(trainset)[1],
+                dim(trainset)[2]))
+  
+  
+  inTrain = createDataPartition(trainset$target, p = 3/4)[[1]]
+  training = trainset[ inTrain,]
+  testing = trainset[-inTrain,]
+  
+  print(sprintf("training dim: %s", dim(training)[1] ))
+  print(sprintf("testing dim: %s", dim(testing)[1] ))
+  
+  print (table(training$target))
+  print (table(testing$target))
+  
+  
+  modFit <- train(target ~ .,
+                  data=training,
+                  method="rf", ntree=10,
+                  # preProcess=c("center","scale"),
+                  trControl = trainControl(allowParallel=T, method="cv", number=4), 
+                  number=5, verbose=TRUE)
+  
+  rf_feature_importance(modFit)
+  
+  # training
+  prediction_rf <- predict(modFit, training)
+  print("Predictions RF:training")
+  print(confusionMatrix(prediction_rf, training$target, positive='preictal'))
+  
+  
+  # testing
+  prediction_rf <- predict(modFit, testing)
+  print("Predictions RF : testing")
+  print(confusionMatrix(prediction_rf, testing$target, positive='preictal'))
+  
+  print("Saving RDS")
+  saveRDS(modFit, save_model_filename)
+  
+  # return model with all features
+  modFit
+}
+
+rf_feature_importance <- function(modFit) {
+  # find most important features
+  vi <- varImp(modFit, scale=FALSE)$importance
+  vi <- data.frame(varname=row.names(vi), Overall=vi$Overall)
+  vi <- vi[order(vi$Overall, decreasing = TRUE),]
+  
+  # varnames with gini greater than 2.
+  rf_important_varnames <- vi[vi$Overall > 1,]$varname
+  cnt <- length(rf_important_varnames)
+  sprintf("Number of Random Forest Features with Gini > 2.0: %s", rf_important_varnames)
+  print(head(vi, 20))
+  
+  # plot the top features
+  varImpPlot(modFit$finalModel,
+             scale=FALSE,
+             n.var=length(rf_important_varnames),
+             main=sprintf("Top %s RF Variables Ranked by Gini", length(rf_important_varnames)))
 }
 
 
