@@ -301,40 +301,16 @@ load_window_features <- function(output_filename="../data/features/train_1_corre
 train_rf_all_features <- function(trainset, seed=1234, save_model_filename="../data/models/train_1_correlation_and_fft.rds") {
   set.seed(seed)
   
-  # # remove rows with NULLs
-  trainset <- trainset[rowSums(is.na(trainset)) == 0,]
+  # remove columns that we don't train on
+  trainset <- subset(trainset, select=-c(id, window_id, segnum))
   
-  # convert to 'target' to a factor variable
-  trainset$target <- factor(trainset$target, levels=c(0,1), labels=c('interictal', 'preictal'))
+  print(sprintf("after removing columns: %s, %s", dim(trainset)[1],
+                dim(trainset)[2]))
 
-  # 
-  # # separate pos and 
-  # neg_samples <- trainset[trainset$target == 0,]
-  # pos_samples <- trainset[trainset$target == 1,]
-  # print(sprintf("neg dim: %s", dim(neg_samples)[1] ))
-  # print(sprintf("pos dim: %s", dim(pos_samples)[1] ))
-  # 
-  # if (do_downsample) {
-  #   # make the classes equal
-  #   n_neg_samples <- dim(pos_samples)[1]
-  #   
-  #   # downsample the negative class to make the class sizes equal
-  #   sample_inds <- sample(dim(neg_samples)[1], n_neg_samples, replace=FALSE)
-  #   neg_samples <- neg_samples[sample_inds,]
-  # }
-  # 
-  # print(sprintf("neg dim: %s", dim(neg_samples)[1] ))
-  # print(sprintf("pos dim: %s", dim(pos_samples)[1] ))
-  # 
-  # # 
-  # neg_inTrain = createDataPartition(neg_samples$target, p = 3/4)[[1]]
-  # pos_inTrain = createDataPartition(pos_samples$target, p = 3/4)[[1]]
   
   inTrain = createDataPartition(trainset$target, p = 3/4)[[1]]
   training = trainset[ inTrain,]
   testing = trainset[-inTrain,]
-  # training = c(neg_samples[neg_inTrain,], pos_samples[pos_inTrain])
-  # testing = c(neg_samples[-neg_inTrain], pos_samples[-pos_inTrain])
   
   print(sprintf("training dim: %s", dim(training)[1] ))
   print(sprintf("testing dim: %s", dim(testing)[1] ))
@@ -347,18 +323,16 @@ train_rf_all_features <- function(trainset, seed=1234, save_model_filename="../d
                   method="rf", ntree=10,
                   trControl = trainControl(method="cv"), number=5, verbose=TRUE)
 
-  # testing
-  prediction_rf <- predict(modFit, testing)
-  print("prediction_rf")
-  print(prediction_rf)
-  print(table(prediction_rf))
-  print("Predictions RF : testing")
-  print(confusionMatrix(prediction_rf, testing$target))
-
   # training
   prediction_rf <- predict(modFit, training)
   print("Predictions RF:training")
-  print(confusionMatrix(prediction_rf, training$target))
+  print(confusionMatrix(prediction_rf, training$target, positive='preictal'))
+  
+  
+  # testing
+  prediction_rf <- predict(modFit, testing)
+  print("Predictions RF : testing")
+  print(confusionMatrix(prediction_rf, testing$target, positive='preictal'))
 
   print("Saving RDS")
   saveRDS(modFit, save_model_filename)
