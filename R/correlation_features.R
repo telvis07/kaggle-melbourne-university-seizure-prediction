@@ -4,11 +4,11 @@
 
 library(ggplot2)
 library(entropy)
-
+library(R.matlab)
 library(caret)
 library(randomForest)
 library(rpart)
-library("parallel")
+library(parallel)
 
 
 feat_corr_eigen <- function(window_all_channels, verbose=T) {
@@ -110,6 +110,23 @@ feat_fft_mag_entropy <- function(window_all_channels, n_samples_per_window=4000,
   entropy.empirical(m_mags, unit="log2")
 }
 
+feat_fft_phase_entropy <- function(window_all_channels, n_samples_per_window=4000, verbose=T) {
+  # transpose the eeg data : N x 16 -> 16 x N
+  m_chan_t <- t(window_all_channels)
+  
+  # sanity check the dimensions   
+  print(sprintf("dim(m_chan_t) : %s", paste(dim(m_chan_t), " ")))
+  
+  # calc fft for channel data
+  m_fft <- fft(m_chan_t)
+  
+  # calculate the magnitude fft values
+  m_angle <- atan2(Im(m_fft), Re(m_fft))
+
+  # return the 
+  entropy.empirical(m_angle, unit="log2")
+}
+
 feat_all_channels_entropy <- function(window_all_channels, n_samples_per_window=4000, verbose=T) {
   # return the entropy of all channels
   entropy.empirical(as.matrix(window_all_channels), unit="log2")
@@ -121,7 +138,8 @@ make_feature_names <- function() {
   v_names <- c("id", "target", "window_id", "segnum",
                paste("chan_eigenval_", 1:16, sep=""), 
                "fft_mag_entropy",
-               "all_chan_entropy")
+               "all_chan_entropy",
+               "fft_phase_entropy")
   
   v_names
 }
@@ -223,14 +241,15 @@ process_windows_corr_fft <- function(data, id, target, n_seg_num, secs_per_windo
     v_eigen_values <- feat_corr_eigen(window_all_channels = window_all_channels)
     n_fft_mag_entropy <- feat_fft_mag_entropy(window_all_channels = window_all_channels)
     n_all_chan_entropy <- feat_all_channels_entropy(window_all_channels = window_all_channels)
-    
+    n_fft_phase_entropy <- feat_fft_phase_entropy(window_all_channels = window_all_channels)
     trainset[n_window_id,] = c(id,
                                target,
                                n_window_id,
                                n_seg_num,
                                v_eigen_values,
                                n_fft_mag_entropy,
-                               n_all_chan_entropy)
+                               n_all_chan_entropy,
+                               n_fft_phase_entropy)
     
   }
   colnames(trainset) <- v_feature_names
@@ -299,11 +318,21 @@ load_window_features <- function(output_filename="../data/features/train_1_corre
   df
 }
 
-train_rf_all_features <- function(trainset, seed=1234, save_model_filename="../data/models/train_1_correlation_and_fft.rds") {
+train_rf_all_features <- function(trainset, seed=1234, quick=FALSE, save_model_filename="../data/models/train_1_correlation_and_fft.rds") {
   set.seed(seed)
   
+  if (quick) {
+    # downsample, so we can run quicker
+    trainset <- sample_data(trainset)
+    ntree = 10
+    n_rf_number = 5
+  } else {
+    ntree = 100
+    n_rf_number = 10
+  }
+  
   # remove columns that we don't train on
-  trainset <- subset(trainset, select=-c(id, window_id, segnum))
+  trainset <- subset(trainset, select=-c(id, window_id, segnum, fft_phase_entropy))
   
   print(sprintf("after removing columns: %s, %s", dim(trainset)[1],
                 dim(trainset)[2]))
@@ -322,10 +351,10 @@ train_rf_all_features <- function(trainset, seed=1234, save_model_filename="../d
 
   modFit <- train(target ~ .,
                   data=training,
-                  method="rf", ntree=100,
+                  method="rf", ntree=ntree,
                   preProcess=c("center","scale"),
                   trControl = trainControl(allowParallel=T, method="cv", number=4), 
-                  number=10, verbose=TRUE)
+                  number=n_rf_number, verbose=TRUE)
 
   rf_feature_importance(modFit)
   
@@ -346,56 +375,56 @@ train_rf_all_features <- function(trainset, seed=1234, save_model_filename="../d
   modFit
 }
 
-train_rf_all_features.quick <- function(trainset, seed=1234, save_model_filename="../data/models/train_1_correlation_and_fft.rds") {
-  set.seed(seed)
-  
-  # downsample
-  trainset <- sample_data(trainset)
-  
-  # remove columns that we don't train on
-  trainset <- subset(trainset, select=-c(id, window_id, segnum))
-  
-  print(sprintf("after removing columns: %s, %s", dim(trainset)[1],
-                dim(trainset)[2]))
-  
-  
-  inTrain = createDataPartition(trainset$target, p = 3/4)[[1]]
-  training = trainset[ inTrain,]
-  testing = trainset[-inTrain,]
-  
-  print(sprintf("training dim: %s", dim(training)[1] ))
-  print(sprintf("testing dim: %s", dim(testing)[1] ))
-  
-  print (table(training$target))
-  print (table(testing$target))
-  
-  
-  modFit <- train(target ~ .,
-                  data=training,
-                  method="rf", ntree=10,
-                  # preProcess=c("center","scale"),
-                  trControl = trainControl(allowParallel=T, method="cv", number=4), 
-                  number=5, verbose=TRUE)
-  
-  rf_feature_importance(modFit)
-  
-  # training
-  prediction_rf <- predict(modFit, training)
-  print("Predictions RF:training")
-  print(confusionMatrix(prediction_rf, training$target, positive='preictal'))
-  
-  
-  # testing
-  prediction_rf <- predict(modFit, testing)
-  print("Predictions RF : testing")
-  print(confusionMatrix(prediction_rf, testing$target, positive='preictal'))
-  
-  print("Saving RDS")
-  saveRDS(modFit, save_model_filename)
-  
-  # return model with all features
-  modFit
-}
+# train_rf_all_features.quick <- function(trainset, seed=1234, save_model_filename="../data/models/train_1_correlation_and_fft.rds") {
+#   set.seed(seed)
+#   
+#   # downsample, so we can run quicker
+#   trainset <- sample_data(trainset)
+#   
+#   # remove columns that we don't train on
+#   trainset <- subset(trainset, select=-c(id, window_id, segnum, fft_phase_entropy))
+#   
+#   print(sprintf("after removing columns: %s, %s", dim(trainset)[1],
+#                 dim(trainset)[2]))
+#   
+#   
+#   inTrain = createDataPartition(trainset$target, p = 3/4)[[1]]
+#   training = trainset[ inTrain,]
+#   testing = trainset[-inTrain,]
+#   
+#   print(sprintf("training dim: %s", dim(training)[1] ))
+#   print(sprintf("testing dim: %s", dim(testing)[1] ))
+#   
+#   print (table(training$target))
+#   print (table(testing$target))
+#   
+#   
+#   modFit <- train(target ~ .,
+#                   data=training,
+#                   method="rf", ntree=10,
+#                   # preProcess=c("center","scale"),
+#                   trControl = trainControl(allowParallel=T, method="cv", number=4), 
+#                   number=5, verbose=TRUE)
+#   
+#   rf_feature_importance(modFit)
+#   
+#   # training
+#   prediction_rf <- predict(modFit, training)
+#   print("Predictions RF:training")
+#   print(confusionMatrix(prediction_rf, training$target, positive='preictal'))
+#   
+#   
+#   # testing
+#   prediction_rf <- predict(modFit, testing)
+#   print("Predictions RF : testing")
+#   print(confusionMatrix(prediction_rf, testing$target, positive='preictal'))
+#   
+#   print("Saving RDS")
+#   saveRDS(modFit, save_model_filename)
+#   
+#   # return model with all features
+#   modFit
+# }
 
 rf_feature_importance <- function(modFit) {
   # find most important features

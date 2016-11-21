@@ -1,5 +1,8 @@
 source("correlation_features.R")
 source("sample_data.R")
+
+b_quick = T
+
 trainset <- load_window_features()
 
 # # remove rows with NULLs
@@ -12,4 +15,4 @@ trainset$target <- factor(trainset$target, levels=c(0,1),
 
 
 # remove rows with NULLs
-train_rf_all_features.quick(trainset = trainset)
+train_rf_all_features(trainset = trainset, quick=b_quick)
