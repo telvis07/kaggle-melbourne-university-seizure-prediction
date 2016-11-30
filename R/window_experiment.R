@@ -1,4 +1,7 @@
 # generate features for various window sizes
+source("correlation_features.R")
+source("sample_data.R")
+
 
 print("generating features")
 for (window_size in c(1, 5, 10, 30, 60, 120, 300)) {
