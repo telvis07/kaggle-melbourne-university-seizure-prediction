@@ -8,6 +8,9 @@ trainset <- load_window_features()
 # # remove rows with NULLs
 trainset <- trainset[rowSums(is.na(trainset)) == 0,]
 
+# removing windows with dropout rows
+# trainset <- filter(trainset, n_dropout_rows==0)
+
 # convert to 'target' to a factor variable
 trainset$target <- factor(trainset$target, levels=c(0,1), 
                           labels=c('interictal', 'preictal'))

@@ -3,12 +3,15 @@
 # setwd("/Users/telvis/work/kaggle-melbourne-university-seizure-prediction/R")
 
 library(ggplot2)
+library(gridExtra)
 library(entropy)
 library(R.matlab)
 library(caret)
 library(randomForest)
 library(rpart)
 library(parallel)
+
+source("sample_data.R")
 
 
 feat_corr_eigen <- function(window_all_channels, verbose=T) {
@@ -36,7 +39,7 @@ feat_corr_eigen <- function(window_all_channels, verbose=T) {
   l_eigen$values
 }
 
-feat_fft_sums <- function(window_all_channels, n_samples_per_window=4000, verbose=T) {
+feat_fft_sums <- function(window_all_channels, verbose=T) {
   # transpose the eeg data : N x 16 -> 16 x N
   # calc fft
   # 
@@ -64,7 +67,7 @@ feat_fft_sums <- function(window_all_channels, n_samples_per_window=4000, verbos
   
 }
 
-feat_fft_means <- function(window_all_channels, n_samples_per_window=4000, verbose=T) {
+feat_fft_means <- function(window_all_channels, verbose=T) {
   # transpose the eeg data : N x 16 -> 16 x N
   # calc fft
   # 
@@ -93,7 +96,7 @@ feat_fft_means <- function(window_all_channels, n_samples_per_window=4000, verbo
 }
 
 
-feat_fft_mag_entropy <- function(window_all_channels, n_samples_per_window=4000, verbose=T) {
+feat_fft_mag_entropy <- function(window_all_channels, verbose=T) {
   # transpose the eeg data : N x 16 -> 16 x N
   m_chan_t <- t(window_all_channels)
   
@@ -110,7 +113,7 @@ feat_fft_mag_entropy <- function(window_all_channels, n_samples_per_window=4000,
   entropy.empirical(m_mags, unit="log2")
 }
 
-feat_fft_phase_entropy <- function(window_all_channels, n_samples_per_window=4000, verbose=T) {
+feat_fft_phase_entropy <- function(window_all_channels, verbose=T) {
   # transpose the eeg data : N x 16 -> 16 x N
   m_chan_t <- t(window_all_channels)
   
@@ -127,7 +130,7 @@ feat_fft_phase_entropy <- function(window_all_channels, n_samples_per_window=400
   entropy.empirical(m_angle, unit="log2")
 }
 
-feat_all_channels_entropy <- function(window_all_channels, n_samples_per_window=4000, verbose=T) {
+feat_all_channels_entropy <- function(window_all_channels, verbose=T) {
   # return the entropy of all channels
   entropy.empirical(as.matrix(window_all_channels), unit="log2")
 }
@@ -135,7 +138,7 @@ feat_all_channels_entropy <- function(window_all_channels, n_samples_per_window=
 
 make_feature_names <- function() {
   # generate the column names for the features
-  v_names <- c("id", "target", "window_id", "segnum",
+  v_names <- c("id", "target", "window_id", "segnum", "n_dropout_rows",
                paste("chan_eigenval_", 1:16, sep=""), 
                "fft_mag_entropy",
                "all_chan_entropy",
@@ -207,6 +210,7 @@ process_windows_corr_fft <- function(data, id, target, n_seg_num, secs_per_windo
                                  target,
                                  n_window_id,
                                  n_seg_num,
+                                 n_dropout_rows,
                                  rep(NA, length(v_feature_names) - 4))
       next
     } 
@@ -246,6 +250,7 @@ process_windows_corr_fft <- function(data, id, target, n_seg_num, secs_per_windo
                                target,
                                n_window_id,
                                n_seg_num,
+                               n_dropout_rows,
                                v_eigen_values,
                                n_fft_mag_entropy,
                                n_all_chan_entropy,
@@ -257,8 +262,12 @@ process_windows_corr_fft <- function(data, id, target, n_seg_num, secs_per_windo
   
 }
 
-process_file_windows_single <- function(filename) {
+
+process_file_windows_single <- function(filename, secs_per_window=10) {
   # trainset <- process_file_windows_single("../data/train_1/1_999_0.mat")
+  
+  print(sprintf("[process_file_windows_single] - filename=%s", filename))
+  print(sprintf("[process_file_windows_single] - secs_per_window=%s", secs_per_window))
   
   # parse the 'preictal, interical' label
   data = readMat(filename)
@@ -270,18 +279,27 @@ process_file_windows_single <- function(filename) {
   
   # calculate window features
   # trainset <- process_windows(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num)
-  trainset <- process_windows_corr_fft(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num)
+  trainset <- process_windows_corr_fft(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num, secs_per_window=secs_per_window)
   trainset
+}
+
+process_file_windows_single_wrapper <- function(task){
+  filename <- task$filename
+  secs_per_window <- task$secs_per_window
+  process_file_windows_single(filename=filename, secs_per_window = secs_per_window)
 }
 
 process_windows_parallel <- function(inputdir="../data/train_1.small/",
                                      output_filename="../data/features/train_1_correlation_and_fft.txt",
-                                     cores=4) {
+                                     cores=4,
+                                     secs_per_window=10) {
   # df <- process_windows_parallel(cores=8, inputdir = "../data/train_1/")
   
   filenames <- list.files(inputdir, pattern="*.mat", full.names=TRUE)
+  tasks <- lapply(filenames, function(x) list(filename=x, secs_per_windows=secs_per_window))
+  
   runtime <- system.time({
-    trainset <- mclapply(filenames, process_file_windows_single, mc.cores = cores)
+    trainset <- mclapply(tasks, process_file_windows_single_wrapper, mc.cores = cores)
   })[3]
   print(sprintf("runtime: %s", runtime))
   print(sprintf("length: %s", length(trainset)))
@@ -311,6 +329,7 @@ load_window_features <- function(output_filename="../data/features/train_1_corre
   df <- read.table(output_filename, header=T, stringsAsFactors = F)
   df$segnum <- as.numeric(df$segnum)
   df$target <- as.numeric(df$target)
+  df$n_dropout_rows <- as.numeric(df$n_dropout_rows)
   
   # sort by target then segment number
   ord = order(df$target, df$segnum, decreasing = F)
@@ -332,7 +351,7 @@ train_rf_all_features <- function(trainset, seed=1234, quick=FALSE, save_model_f
   }
   
   # remove columns that we don't train on
-  trainset <- subset(trainset, select=-c(id, window_id, segnum, fft_phase_entropy))
+  trainset <- subset(trainset, select=-c(id, window_id, segnum, fft_phase_entropy, n_dropout_rows))
   
   print(sprintf("after removing columns: %s, %s", dim(trainset)[1],
                 dim(trainset)[2]))
@@ -452,12 +471,12 @@ rf_feature_importance <- function(modFit) {
 #############################################
 
 
-get_first_windows_from_file <- function(filename="../data/train_1/1_999_0.mat"){
+get_first_windows_from_file <- function(filename="../data/train_1/1_999_0.mat", secs_per_window=10){
   # Get the first window from a file.
   
   # plot eignenvectors
   
-  secs_per_window=10
+  
   # filename = "../data/train_1/1_999_0.mat"
   
   # parse the 'preictal, interical' label
@@ -471,6 +490,8 @@ get_first_windows_from_file <- function(filename="../data/train_1/1_999_0.mat"){
   # 
   # trainset <- compute_corr_for_windows(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num)
   df_eeg = as.data.frame(data[[1]][[1]])
+  
+  print(sprintf("dim(eeg_data) : %s", paste(dim(df_eeg), " ")))
   
   # fs - 400Hz (samples/second) 
   iEEGsamplingRate <- data$dataStruct[[2]][1]
@@ -503,7 +524,7 @@ get_first_windows_from_file <- function(filename="../data/train_1/1_999_0.mat"){
 
 plot_feat_corr_eigen <- function() {
   
-  window_all_channels_0 <- get_windows_from_file(filename = "../data/train_1/1_999_0.mat")
+  window_all_channels_0 <- get_first_windows_from_file(filename = "../data/train_1/1_999_0.mat")
   
   v_eigen_values <- feat_corr_eigen(window_all_channels = window_all_channels_0)
   
@@ -514,7 +535,7 @@ plot_feat_corr_eigen <- function() {
     labs(title="cor eigenvalues (interical)")
   
   
-  window_all_channels_1 <- get_windows_from_file(filename = "../data/train_1/1_100_1.mat")
+  window_all_channels_1 <- get_first_windows_from_file(filename = "../data/train_1/1_100_1.mat")
   
   v_eigen_values <- feat_corr_eigen(window_all_channels = window_all_channels_1)
   
@@ -529,7 +550,7 @@ plot_feat_corr_eigen <- function() {
 
 plot_feat_fft_means <- function() {
   
-  window_all_channels_0 <- get_windows_from_file(filename = "../data/train_1/1_999_0.mat")
+  window_all_channels_0 <- get_first_windows_from_file(filename = "../data/train_1/1_999_0.mat")
   
   v_feats.0 <- feat_fft_means(window_all_channels = window_all_channels_0)
   
@@ -540,7 +561,7 @@ plot_feat_fft_means <- function() {
     labs(title="fft means (interical)")
   
   
-  window_all_channels_1 <- get_windows_from_file(filename = "../data/train_1/1_100_1.mat")
+  window_all_channels_1 <- get_first_windows_from_file(filename = "../data/train_1/1_100_1.mat")
   
   v_feats.1 <- feat_fft_means(window_all_channels = window_all_channels_1)
   
@@ -558,7 +579,7 @@ plot_feat_fft_entropy <- function() {
   
   trainset <- calc_corr_for_windows()
   
-  window_all_channels_0 <- get_windows_from_file(filename = "../data/train_1/1_999_0.mat")
+  window_all_channels_0 <- get_first_windows_from_file(filename = "../data/train_1/1_999_0.mat")
   
   v_feats.0 <- feat_fft_entropy(window_all_channels = window_all_channels_0)
   print(v_feats.0)
@@ -570,7 +591,7 @@ plot_feat_fft_entropy <- function() {
   #   labs(title="fft means (interical)")
   
   
-  window_all_channels_1 <- get_windows_from_file(filename = "../data/train_1/1_100_1.mat")
+  window_all_channels_1 <- get_first_windows_from_file(filename = "../data/train_1/1_100_1.mat")
   
   v_feats.1 <- feat_fft_entropy(window_all_channels = window_all_channels_1)
   print(v_feats.1)
@@ -582,4 +603,53 @@ plot_feat_fft_entropy <- function() {
   #   labs(title="fft means (preictal)")
   # 
   # grid.arrange(plt1, plt2)
+}
+
+plot_channel_fft <- function(n=0, secs_per_window=10){
+  fs <- 400 # 400 HZ
+  window_all_channels_0 <- get_first_windows_from_file(filename = "../data/train_1/1_999_0.mat",
+                                                       secs_per_window=secs_per_window)
+  m_chan_t <- t(window_all_channels_0)
+  print(sprintf("dim(m_chan_t) : %s", paste(dim(m_chan_t), " ")))
+  
+  if (n > ncol(m_chan_t)) {
+    print("Adding padding")
+    n_padding_cols <- n - dim(m_chan_t)[2]
+    n_padding_rows <- dim(m_chan_t)[1]
+    m_padding <- matrix(0,nrow=n_padding_rows, ncol=n_padding_cols)
+    m_chan_t <- cbind(m_chan_t, m_padding)
+  }
+  
+  m_fft <- fft(m_chan_t)
+  print(sprintf("dim(m_fft) = %s", paste(dim(m_fft), " ")))
+  
+  
+  for (i in seq(1)){
+    X <- m_fft[i,]
+    
+    m <- 0:(length(X)-1)
+    print(sprintf("Freq resolution is every %5.2f Hz", fs/length(X)))
+    
+    df <- data.frame(X=X)
+    df$freq <- (m*fs)/length(X)
+    df$mag <- abs(X)
+    df$angle <- atan2(Im(df$X), Re(df$X))
+    df$angle[1] <- 0
+
+    obj <- ggplot(df, aes(x=freq, y=mag)) +
+      geom_bar(stat="identity") +
+      labs(x="Frequency (Hz)") +
+      labs(y="Magnitude") +
+      labs(title="Frequency magnitude response") +
+      scale_x_continuous(breaks=seq(0,max(df$freq),20))
+    
+    obj2 <- ggplot(df, aes(x=freq, y=angle)) +
+      geom_bar(stat="identity") +
+      labs(x="Frequency (Hz)") +
+      labs(y="Phase Angle") +
+      labs(title="Phase Angle Plot") +
+      scale_x_continuous(breaks=seq(0,max(df$freq),20))
+    grid.arrange(obj, obj2)
+  
+  }
 }

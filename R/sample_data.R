@@ -11,12 +11,16 @@ sample_data <- function(trainset, n_neg_samples=1000, n_pos_samples=500) {
   print(sprintf("pos dim: %s", dim(pos_samples)[1] ))
   
   # downsample negative class (interictal)
-  sample_inds <- sample(dim(neg_samples)[1], n_neg_samples, replace=FALSE)
-  neg_samples <- neg_samples[sample_inds,]
+  if (n_neg_samples < dim(neg_samples)[1]) {
+    sample_inds <- sample(dim(neg_samples)[1], n_neg_samples, replace=FALSE)
+    neg_samples <- neg_samples[sample_inds,]
+  }
   
   # downsample positive class (preictal)
-  sample_inds <- sample(dim(pos_samples)[1], n_pos_samples, replace=FALSE)
-  pos_samples <- pos_samples[sample_inds,]
+  if(n_pos_samples < dim(pos_samples)[1]){
+    sample_inds <- sample(dim(pos_samples)[1], n_pos_samples, replace=FALSE)
+    pos_samples <- pos_samples[sample_inds,]
+  }
   
   print(sprintf("neg dim: %s", dim(neg_samples)[1] ))
   print(sprintf("pos dim: %s", dim(pos_samples)[1] ))

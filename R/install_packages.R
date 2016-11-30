@@ -7,4 +7,7 @@ install.packages("randomForest")
 install.packages("rpart")
 install.packages("parallel")
 install.packages("e1071")
+install.packages("moments")
+
+install.packages("R.matlab")
 
