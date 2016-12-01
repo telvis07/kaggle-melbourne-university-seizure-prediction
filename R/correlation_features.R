@@ -14,7 +14,7 @@ library(parallel)
 source("sample_data.R")
 
 
-feat_corr_eigen <- function(window_all_channels, verbose=T) {
+feat_corr_eigen <- function(window_all_channels, verbose=F) {
   # Calculate correlation matrix and its eigenvalues (b/w channels)
   
   m_channel_corrs <- abs(cor(window_all_channels, method="pearson"))
@@ -39,7 +39,7 @@ feat_corr_eigen <- function(window_all_channels, verbose=T) {
   l_eigen$values
 }
 
-feat_fft_sums <- function(window_all_channels, verbose=T) {
+feat_fft_sums <- function(window_all_channels, verbose=F) {
   # transpose the eeg data : N x 16 -> 16 x N
   # calc fft
   # 
@@ -50,7 +50,9 @@ feat_fft_sums <- function(window_all_channels, verbose=T) {
   #   m_chan_t <- cbind(m_chan_t, matrix(0, n_num_rows, n_samples_per_window-n_num_cols))
   # }
   
-  print(sprintf("dim(m_chan_t) : %s", paste(dim(m_chan_t), " ")))
+  if(verbose){
+    print(sprintf("dim(m_chan_t) : %s", paste(dim(m_chan_t), " ")))
+  }
   
   m_fft <- fft(m_chan_t)
   v_freq_magnitude_sums <- colSums(abs(m_fft))
@@ -67,7 +69,7 @@ feat_fft_sums <- function(window_all_channels, verbose=T) {
   
 }
 
-feat_fft_means <- function(window_all_channels, verbose=T) {
+feat_fft_means <- function(window_all_channels, verbose=F) {
   # transpose the eeg data : N x 16 -> 16 x N
   # calc fft
   # 
@@ -78,7 +80,9 @@ feat_fft_means <- function(window_all_channels, verbose=T) {
   #   m_chan_t <- cbind(m_chan_t, matrix(0, n_num_rows, n_samples_per_window-n_num_cols))
   # }
   
-  print(sprintf("dim(m_chan_t) : %s", paste(dim(m_chan_t), " ")))
+  if (verbose){
+    print(sprintf("dim(m_chan_t) : %s", paste(dim(m_chan_t), " ")))
+  }
   
   m_fft <- fft(m_chan_t)
   v_freq_magnitude_means <- apply((abs(m_fft)), 2, mean)
@@ -96,12 +100,14 @@ feat_fft_means <- function(window_all_channels, verbose=T) {
 }
 
 
-feat_fft_mag_entropy <- function(window_all_channels, verbose=T) {
+feat_fft_mag_entropy <- function(window_all_channels, verbose=F) {
   # transpose the eeg data : N x 16 -> 16 x N
   m_chan_t <- t(window_all_channels)
   
-  # sanity check the dimensions   
-  print(sprintf("dim(m_chan_t) : %s", paste(dim(m_chan_t), " ")))
+  # sanity check the dimensions
+  if(verbose){
+    print(sprintf("dim(m_chan_t) : %s", paste(dim(m_chan_t), " ")))
+  }
   
   # calc fft for channel data
   m_fft <- fft(m_chan_t)
@@ -113,12 +119,14 @@ feat_fft_mag_entropy <- function(window_all_channels, verbose=T) {
   entropy.empirical(m_mags, unit="log2")
 }
 
-feat_fft_phase_entropy <- function(window_all_channels, verbose=T) {
+feat_fft_phase_entropy <- function(window_all_channels, verbose=F) {
   # transpose the eeg data : N x 16 -> 16 x N
   m_chan_t <- t(window_all_channels)
   
-  # sanity check the dimensions   
-  print(sprintf("dim(m_chan_t) : %s", paste(dim(m_chan_t), " ")))
+  # sanity check the dimensions  
+  if (verbose) {
+    print(sprintf("dim(m_chan_t) : %s", paste(dim(m_chan_t), " ")))
+  }
   
   # calc fft for channel data
   m_fft <- fft(m_chan_t)
@@ -130,7 +138,7 @@ feat_fft_phase_entropy <- function(window_all_channels, verbose=T) {
   entropy.empirical(m_angle, unit="log2")
 }
 
-feat_all_channels_entropy <- function(window_all_channels, verbose=T) {
+feat_all_channels_entropy <- function(window_all_channels, verbose=F) {
   # return the entropy of all channels
   entropy.empirical(as.matrix(window_all_channels), unit="log2")
 }
@@ -142,13 +150,21 @@ make_feature_names <- function() {
                paste("chan_eigenval_", 1:16, sep=""), 
                "fft_mag_entropy",
                "all_chan_entropy",
-               "fft_phase_entropy")
+               "fft_phase_entropy",
+               paste("kurt_", 1:16, sep=""),
+               paste("skew_", 1:16, sep=""),
+               paste("min_", 1:16, sep=""), 
+               paste("max_", 1:16, sep=""), 
+               paste("mean_", 1:16, sep=""), 
+               paste("median_", 1:16, sep=""), 
+               paste("sem_", 1:16, sep=""), 
+               paste("abssum_", 1:16, sep=""))
   
   v_names
 }
 
 
-process_windows_corr_fft <- function(data, id, target, n_seg_num, secs_per_window=10, verbose=T){
+process_windows_corr_fft <- function(data, id, target, n_seg_num, secs_per_window=10, verbose=F){
   # (1) eeg data
   # (2) nSamplesSegment: total number of time samples (number of rows in the data field).
   # (3) iEEGsamplingRate: data sampling rate, i.e. the number of data samples 
@@ -197,14 +213,17 @@ process_windows_corr_fft <- function(data, id, target, n_seg_num, secs_per_windo
                                         function (x) sum(abs(x))))
     n_dropout_rows <- sum(li_absum_by_row == 0)
     
-    if (n_dropout_rows > 0) {
+    if ((verbose) && (n_dropout_rows > 0)) {
       print(sprintf("[process_windows] %s: n_dropout_rows = %s", id, n_dropout_rows))
     }
     
     v_dropout_rows <- (li_absum_by_row == FALSE)
     
     if (n_dropout_rows > 3500) {
-      print(sprintf("[process_windows] - too many dropout rows in window: %s", n_window_id))
+      if (verbose){
+        print(sprintf("[process_windows] - too many dropout rows in window: %s", n_window_id))
+      }
+      
       # insert row with all features as NA
       trainset[n_window_id,] = c(id,
                                  target,
@@ -217,7 +236,9 @@ process_windows_corr_fft <- function(data, id, target, n_seg_num, secs_per_windo
     
     if( n_dropout_rows > 0) {
       ## Impute the drop out rows with the row-mean
-      print(sprintf("Imputing file %s window %s", id, n_window_id))
+      if (verbose) {
+        print(sprintf("Imputing file %s window %s", id, n_window_id))
+      }
       
       # set the dropout rows to NA
       window_all_channels[v_dropout_rows, ] <- NA
@@ -234,7 +255,10 @@ process_windows_corr_fft <- function(data, id, target, n_seg_num, secs_per_windo
       rm(m_t)
     }
     
-    print(dim(window_all_channels))
+    if (verbose){
+      print(dim(window_all_channels))
+    }
+    
     if (dim(window_all_channels)[1] != n_samples_per_window) {
       stop(sprintf("[process_windows] - invalid window length. Expected: %s, Found: %s",
                    n_samples_per_window,
@@ -243,9 +267,24 @@ process_windows_corr_fft <- function(data, id, target, n_seg_num, secs_per_windo
     
     # correlation and eigenvalues
     v_eigen_values <- feat_corr_eigen(window_all_channels = window_all_channels)
-    n_fft_mag_entropy <- feat_fft_mag_entropy(window_all_channels = window_all_channels)
+    
+    # channel entropy
     n_all_chan_entropy <- feat_all_channels_entropy(window_all_channels = window_all_channels)
+    
+    # fft features
+    n_fft_mag_entropy <- feat_fft_mag_entropy(window_all_channels = window_all_channels)
     n_fft_phase_entropy <- feat_fft_phase_entropy(window_all_channels = window_all_channels)
+    
+    # basic statistics
+    v_kurt <- kurtosis(window_all_channels)
+    v_skewness <- skewness(window_all_channels)
+    v_min <- sapply(window_all_channels, min)
+    v_max <- sapply(window_all_channels, max)
+    v_mean <- sapply(window_all_channels, mean)
+    v_median <- sapply(window_all_channels, median)
+    v_sem <- sapply(window_all_channels, function (x) {sd(x)/length(x)})
+    v_absum <- sapply(window_all_channels, function (x) {sum(abs(x))})
+    
     trainset[n_window_id,] = c(id,
                                target,
                                n_window_id,
@@ -254,7 +293,15 @@ process_windows_corr_fft <- function(data, id, target, n_seg_num, secs_per_windo
                                v_eigen_values,
                                n_fft_mag_entropy,
                                n_all_chan_entropy,
-                               n_fft_phase_entropy)
+                               n_fft_phase_entropy,
+                               v_kurt,
+                               v_skewness,
+                               v_min,
+                               v_max,
+                               v_mean,
+                               v_median,
+                               v_sem,
+                               v_absum)
     
   }
   colnames(trainset) <- v_feature_names
@@ -605,12 +652,15 @@ plot_feat_fft_entropy <- function() {
   # grid.arrange(plt1, plt2)
 }
 
-plot_channel_fft <- function(n=0, secs_per_window=10){
+plot_channel_fft <- function(n=0, secs_per_window=10, verbose=F){
   fs <- 400 # 400 HZ
   window_all_channels_0 <- get_first_windows_from_file(filename = "../data/train_1/1_999_0.mat",
                                                        secs_per_window=secs_per_window)
   m_chan_t <- t(window_all_channels_0)
-  print(sprintf("dim(m_chan_t) : %s", paste(dim(m_chan_t), " ")))
+  
+  if (verbose) {
+    print(sprintf("dim(m_chan_t) : %s", paste(dim(m_chan_t), " ")))
+  }
   
   if (n > ncol(m_chan_t)) {
     print("Adding padding")
@@ -621,7 +671,10 @@ plot_channel_fft <- function(n=0, secs_per_window=10){
   }
   
   m_fft <- fft(m_chan_t)
-  print(sprintf("dim(m_fft) = %s", paste(dim(m_fft), " ")))
+  
+  if(verbose) {
+    print(sprintf("dim(m_fft) = %s", paste(dim(m_fft), " ")))
+  }
   
   
   for (i in seq(1)){
