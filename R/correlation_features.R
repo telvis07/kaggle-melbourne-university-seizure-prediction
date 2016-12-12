@@ -10,6 +10,7 @@ library(caret)
 library(randomForest)
 library(rpart)
 library(parallel)
+library(moments)
 
 source("sample_data.R")
 
@@ -311,22 +312,27 @@ process_windows_corr_fft <- function(data, id, target, n_seg_num, secs_per_windo
 
 
 process_file_windows_single <- function(filename, secs_per_window=10) {
-  # trainset <- process_file_windows_single("../data/train_1/1_999_0.mat")
-  
-  print(sprintf("[process_file_windows_single] - filename=%s", filename))
-  print(sprintf("[process_file_windows_single] - secs_per_window=%s", secs_per_window))
-  
-  # parse the 'preictal, interical' label
-  data = readMat(filename)
-  s_base_filename <- basename(filename)
-  v_filename_parts <- strsplit(s_base_filename, "_")[[1]]
-  s_target <- v_filename_parts[3]
-  s_target <- gsub(".mat", "", s_target)
-  n_seg_num <- as.numeric(v_filename_parts[2])
-  
-  # calculate window features
-  # trainset <- process_windows(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num)
-  trainset <- process_windows_corr_fft(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num, secs_per_window=secs_per_window)
+  runtime <- system.time({
+    # trainset <- process_file_windows_single("../data/train_1/1_999_0.mat")
+    
+    # print(sprintf("[process_file_windows_single] - filename=%s", filename))
+    # print(sprintf("[process_file_windows_single] - secs_per_window=%s", secs_per_window))
+    
+    # parse the 'preictal, interical' label
+    data = readMat(filename)
+    s_base_filename <- basename(filename)
+    v_filename_parts <- strsplit(s_base_filename, "_")[[1]]
+    s_target <- v_filename_parts[3]
+    s_target <- gsub(".mat", "", s_target)
+    n_seg_num <- as.numeric(v_filename_parts[2])
+    
+    # calculate window features
+    # trainset <- process_windows(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num)
+    trainset <- process_windows_corr_fft(data = data, id=s_base_filename, target=s_target, n_seg_num=n_seg_num, secs_per_window=secs_per_window)
+  })[3]
+
+  print(sprintf("[process_file_windows_single] - filename=%s, secs_per_window=%s runtime: %0.2f", 
+                filename, secs_per_window, runtime))
   trainset
 }
 
@@ -418,7 +424,7 @@ train_rf_all_features <- function(trainset, seed=1234, quick=FALSE, save_model_f
   modFit <- train(target ~ .,
                   data=training,
                   method="rf", ntree=ntree,
-                  preProcess=c("center","scale"),
+                  # preProcess=c("center","scale"),
                   trControl = trainControl(allowParallel=T, method="cv", number=4), 
                   number=n_rf_number, verbose=TRUE)
 
@@ -439,6 +445,60 @@ train_rf_all_features <- function(trainset, seed=1234, quick=FALSE, save_model_f
 
   # return model with all features
   modFit
+}
+
+
+train_lm_all_features <- function(trainset, seed=1234, quick=FALSE, save_model_filename="../data/models/train_1_glm_correlation_and_fft.rds") {
+  set.seed(seed)
+  
+  if (quick) {
+    # downsample, so we can run quicker
+    trainset <- sample_data(trainset)
+    ntree = 10
+    n_rf_number = 5
+  } else {
+    ntree = 100
+    n_rf_number = 10
+  }
+  
+  # remove columns that we don't train on
+  trainset <- subset(trainset, select=-c(id, window_id, segnum, fft_phase_entropy, n_dropout_rows))
+  
+  print(sprintf("after removing columns: %s, %s", dim(trainset)[1],
+                dim(trainset)[2]))
+  
+  
+  inTrain = createDataPartition(trainset$target, p = 3/4)[[1]]
+  training = trainset[ inTrain,]
+  testing = trainset[-inTrain,]
+  
+  print(sprintf("training dim: %s", dim(training)[1] ))
+  print(sprintf("testing dim: %s", dim(testing)[1] ))
+  
+  print (table(training$target))
+  print (table(testing$target))
+  
+  
+  modFit <- train(target ~ .,
+                  data=training,
+                  method="glm", family="binomial")
+  
+  # show final model
+  # print(modFit$finalModel)
+  
+  # testing
+  prediction_rf <- predict(modFit, testing)
+  
+  print("Predictions RF : testing")
+  cmat <- confusionMatrix(prediction_rf, testing$target, positive='preictal')
+  print(cmat)
+  
+  # print("Saving RDS")
+  # saveRDS(modFit, save_model_filename)
+  
+  # return model with all features
+  # modFit
+  cmat
 }
 
 # train_rf_all_features.quick <- function(trainset, seed=1234, save_model_filename="../data/models/train_1_correlation_and_fft.rds") {

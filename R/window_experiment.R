@@ -3,12 +3,16 @@ source("correlation_features.R")
 source("sample_data.R")
 
 
+
+
 print("generating features")
-for (window_size in c(1, 5, 10, 30, 60, 120, 300)) {
-  output_filename=sprintf("../data/features/train_1_window_%s_secs_correlation_and_fft.testing.txt", window_size)
+for (window_size in c(10, 30, 60, 120, 300)) {
+  output_filename=sprintf("../data/features/corr_fft_basicstats.20161202/test_1_window_%s_secs_correlation_and_fft.testing.txt", window_size)
   print(sprintf("Generating : %s", output_filename))
-  df <- process_windows_parallel(cores=4, 
-                                 inputdir="../data/train_1/",
+  
+  # Disable generating features
+  df <- process_windows_parallel(cores=4,
+                                 inputdir="../data/test_1/",
                                  output_filename=output_filename,
                                  secs_per_window=window_size)
   
@@ -19,6 +23,7 @@ for (window_size in c(1, 5, 10, 30, 60, 120, 300)) {
   b_quick = F
   
   trainset <- load_window_features(output_filename=output_filename)
+
   
   # remove rows with NULLs
   trainset <- trainset[rowSums(is.na(trainset)) == 0,]
@@ -40,6 +45,13 @@ for (window_size in c(1, 5, 10, 30, 60, 120, 300)) {
   # remove windows with dropout rows
   trainset <- filter(trainset, n_dropout_rows==0)
   train_rf_all_features(trainset = trainset, quick=b_quick, save_model_filename=save_model_filename)
+  
+  # TODO:....
+  # logistic regression, 
+  # SVMs and
+  # DNNs
+  # Try: https://cran.r-project.org/web/packages/signal/signal.pdf
+  # filter(c(0.5, -0.5), c(1))
 }
 
 
