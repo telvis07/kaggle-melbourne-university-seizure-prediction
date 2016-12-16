@@ -9,6 +9,30 @@ run_buncha_models <- function (window_size = 30) {
   trainset <- load_window_features(output_filename=output_filename)
   trainset <- trainset[rowSums(is.na(trainset)) == 0,]
   trainset$target <- factor(trainset$target, levels=c(0,1), labels=c('interictal', 'preictal'))
+  
+  # downsample
+  down_train <- downSample(x=subset(trainset, select=-c(target)), y=trainset$target, yname="target")
+  print("downsample info")
+  print(table(down_train$target))
+  buncha_models.scale(trainset = trainset, 
+                      save_stats_filename="buncha_model_stats_quick_FALSE_downsample_CARET_SCALE.csv")
+  
+  # upsample
+  up_train <- upSample(x=subset(trainset, select=-c(target)), y=trainset$target, yname="target")
+  print("upsample info")
+  print(table(up_train$target))
+  buncha_models.scale(trainset = trainset, 
+                      save_stats_filename="buncha_model_stats_quick_FALSE_upsample_CARET_SCALE.csv")
+  
+
+}
+
+run_buncha_models.manual_downsample <- function (window_size = 30) {
+  output_filename = sprintf("../data/features/corr_fft_basicstats.20161202/train_1_window_%s_secs_correlation_and_fft.testing.txt", 
+                            window_size)
+  trainset <- load_window_features(output_filename=output_filename)
+  trainset <- trainset[rowSums(is.na(trainset)) == 0,]
+  trainset$target <- factor(trainset$target, levels=c(0,1), labels=c('interictal', 'preictal'))
   buncha_models.scale(trainset = trainset, 
                 downsample_negclass=10000,
                 save_stats_filename="buncha_model_stats_quick_FALSE_downsample_10000_SCALE.csv")
