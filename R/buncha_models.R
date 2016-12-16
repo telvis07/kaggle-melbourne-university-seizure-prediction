@@ -1,17 +1,28 @@
+# generate features for various window sizes
+source("correlation_features.R")
+source("sample_data.R")
 
+run_buncha_models <- function (window_size = 30) {
+  output_filename = sprintf("../data/features/corr_fft_basicstats.20161202/train_1_window_%s_secs_correlation_and_fft.testing.txt", 
+                            window_size)
+  trainset <- load_window_features(output_filename=output_filename)
+  trainset <- trainset[rowSums(is.na(trainset)) == 0,]
+  trainset$target <- factor(trainset$target, levels=c(0,1), labels=c('interictal', 'preictal'))
+  buncha_models(trainset = trainset, 
+                downsample_negclass=5000,
+                save_stats_filename="buncha_model_stats_quick_FALSE_downsample_5000.csv")
+}
 
-
-buncha_models <- function(trainset, seed=1234, quick=FALSE, save_model_filename="../data/models/train_1_glm_correlation_and_fft.rds") {
+buncha_models <- function(trainset, seed=1234, quick=FALSE, downsample_negclass=0, save_stats_filename="buncha_model_stats.csv") {
   set.seed(seed)
   
   if (quick) {
     # downsample, so we can run quicker
-    trainset <- sample_data(trainset)
-    ntree = 10
-    n_rf_number = 5
-  } else {
-    ntree = 100
-    n_rf_number = 10
+    trainset <- sample_data(trainset, n_neg_samples=1000, n_pos_samples=500)
+  } else if (downsample_negclass){
+    trainset <- sample_data(trainset, 
+                            n_neg_samples=downsample_negclass, 
+                            n_pos_samples=0)
   }
   
   # remove columns that we don't train on
@@ -32,45 +43,172 @@ buncha_models <- function(trainset, seed=1234, quick=FALSE, save_model_filename=
   print (table(testing$target))
   
   
-  # TODO : Fix me
-  
-  set.seed(62433)
   print("Training RF")
-  fit_rf <- train(training$diagnosis ~ ., data=training, method="rf")
+  fit_rf <- train(target ~ ., data=training, method="rf", trControl = trainControl(allowParallel=T, method="cv", number=4))
   prediction_rf <- predict(fit_rf, testing)
   print("Predictions RF")
-  print(confusionMatrix(prediction_rf, testing$diagnosis))
-  # Accuracy : 0.7805 
-  
+  confuse_rf <- confusionMatrix(prediction_rf, testing$target, positive='preictal')
+  print(confuse_rf)
+
   print("Training GBM")
-  fit_gbm <- train(training$diagnosis ~ ., data=training, method="gbm", verbose=FALSE)
+  fit_gbm <- train(target ~ ., data=training, method="gbm", verbose=FALSE, trControl = trainControl(allowParallel=T, method="cv", number=4))
   prediction_gbm <- predict(fit_gbm, testing)
   print("Predictions GBM")
-  print(confusionMatrix(prediction_gbm, testing$diagnosis))
-  # Accuracy : 0.8049 
+  confuse_gbm <- confusionMatrix(prediction_gbm, testing$target, positive='preictal')
+  print(confuse_gbm)
   
   print("Training LDA")
-  fit_lda <- train(training$diagnosis ~ ., data=training, method="lda")
+  fit_lda <- train(target ~ ., data=training, method="lda", trControl = trainControl(allowParallel=T, method="cv", number=4))
   prediction_lda <- predict(fit_lda, testing)
   print("Predictions LDA")
-  print(confusionMatrix(prediction_lda, testing$diagnosis))
-  # Accuracy : 0.7683
+  confuse_lda <- confusionMatrix(prediction_lda, testing$target, positive='preictal')
+  print(confuse_lda)
+  
+  print("Training Logistic Regression")
+  fit_glm <- train(target ~ .,
+                  data=training,
+                  method="glm", family="binomial", trControl = trainControl(allowParallel=T, method="cv", number=4))
+  prediction_glm <- predict(fit_glm, testing)
+  print("Predictions GLM")
+  confuse_glm <- confusionMatrix(prediction_glm, testing$target, positive='preictal')
+  print(confuse_glm)
   
   # stacked using rf
   # fit a model that combines predictors
-  predDF <- data.frame(prediction_rf, prediction_gbm, prediction_lda, diagnosis=testing$diagnosis)
+  predDF <- data.frame(prediction_rf, prediction_gbm, prediction_lda, target=testing$target)
   
-  print("Training ensemble of mod1 and mod2: GAM")
-  combModFit <- train(diagnosis ~ ., method="rf", data=predDF)
+  print("Training ensemble : RF, GBM, LDA")
+  combModFit <- train(target ~ ., method="rf", data=predDF, trControl = trainControl(allowParallel=T, method="cv", number=4))
   combPred <- predict(combModFit, predDF)
-  print(confusionMatrix(combPred, testing$diagnosis))
-  # Accuracy : 0.8171 
+  print("Predictions Combined: RF, GBM, LDA")
+  confuse_comb <- confusionMatrix(combPred, testing$target, positive='preictal')
+  print
   
   # Stacked Accuracy: 0.80 is better than random forests and lda and the same as boosting.
   
+  #####
+  df_rf <- as.data.frame(t(confuse_rf$byClass))
+  df_rf$model <- "glm"
+  names(df_rf) <- make.names(names(df_rf))
   
+  df_gbm <- as.data.frame(t(confuse_gbm$byClass))
+  df_gbm$model <- "gbm"
+  names(df_gbm) <- make.names(names(df_gbm))
+  
+  df_lda <- as.data.frame(t(confuse_lda$byClass))
+  df_lda$model <- "lda"
+  names(df_lda) <- make.names(names(df_lda))
+  
+  df_glm <- as.data.frame(t(confuse_glm$byClass))
+  df_glm$model <- "glm"
+  names(df_glm) <- make.names(names(df_glm))
+  
+  df_ens <- as.data.frame(t(confuse_comb$byClass))
+  df_ens$model <- "ensemble"
+  names(df_ens) <- make.names(names(df_ens))
+  
+  all_stats_df <- rbind(df_rf, df_gbm, df_lda, df_glm, df_ens)
+  write.csv(all_stats_df, save_stats_filename, row.names = F)
+  
+  all_stats_df
+}
+
+
+buncha_models.scale <- function(trainset, seed=1234, quick=FALSE, save_stats_filename="buncha_model_stats.csv") {
+  set.seed(seed)
+  
+  if (quick) {
+    # downsample, so we can run quicker
+    trainset <- sample_data(trainset)
+    ntree = 10
+    n_rf_number = 5
+  } 
+  
+  # remove columns that we don't train on
+  trainset <- subset(trainset, select=-c(id, window_id, segnum, fft_phase_entropy, n_dropout_rows))
+  
+  print(sprintf("after removing columns: %s, %s", dim(trainset)[1],
+                dim(trainset)[2]))
+  
+  
+  inTrain = createDataPartition(trainset$target, p = 3/4)[[1]]
+  training = trainset[ inTrain,]
+  testing = trainset[-inTrain,]
+  
+  print(sprintf("training dim: %s", dim(training)[1] ))
+  print(sprintf("testing dim: %s", dim(testing)[1] ))
+  
+  print (table(training$target))
+  print (table(testing$target))
+  
+  
+  print("Training RF")
+  fit_rf <- train(target ~ ., data=training, method="rf", trControl = trainControl(allowParallel=T, method="cv", number=4))
+  prediction_rf <- predict(fit_rf, testing)
+  print("Predictions RF")
+  confuse_rf <- confusionMatrix(prediction_rf, testing$target, positive='preictal')
+  print(confuse_rf)
+  
+  print("Training GBM")
+  fit_gbm <- train(target ~ ., data=training, method="gbm", preProcess=c("center","scale"), verbose=FALSE, trControl = trainControl(allowParallel=T, method="cv", number=4))
+  prediction_gbm <- predict(fit_gbm, testing)
+  print("Predictions GBM")
+  confuse_gbm <- confusionMatrix(prediction_gbm, testing$target, positive='preictal')
+  print(confuse_gbm)
+  
+  print("Training LDA")
+  fit_lda <- train(target ~ ., data=training, method="lda", preProcess=c("center","scale"), trControl = trainControl(allowParallel=T, method="cv", number=4))
+  prediction_lda <- predict(fit_lda, testing)
+  print("Predictions LDA")
+  confuse_lda <- confusionMatrix(prediction_lda, testing$target, positive='preictal')
+  print(confuse_lda)
+  
+  print("Training Logistic Regression")
+  fit_glm <- train(target ~ .,
+                   data=training,
+                   preProcess=c("center","scale"),
+                   method="glm", family="binomial", trControl = trainControl(allowParallel=T, method="cv", number=4))
+  prediction_glm <- predict(fit_glm, testing)
+  print("Predictions GLM")
+  confuse_glm <- confusionMatrix(prediction_glm, testing$target, positive='preictal')
+  print(confuse_glm)
+  
+  # stacked using rf
+  # fit a model that combines predictors
+  predDF <- data.frame(prediction_rf, prediction_gbm, prediction_lda, target=testing$target)
+  
+  print("Training ensemble : RF, GBM, LDA")
+  combModFit <- train(target ~ ., method="rf", data=predDF, preProcess=c("center","scale"), trControl = trainControl(allowParallel=T, method="cv", number=4))
+  combPred <- predict(combModFit, predDF)
+  print("Predictions Combined: RF, GBM, LDA")
+  confuse_comb <- confusionMatrix(combPred, testing$target, positive='preictal')
+  print
+  
+  # Stacked Accuracy: 0.80 is better than random forests and lda and the same as boosting.
   
   #####
+  df_rf <- as.data.frame(t(confuse_rf$byClass))
+  df_rf$model <- "glm"
+  names(df_rf) <- make.names(names(df_rf))
   
+  df_gbm <- as.data.frame(t(confuse_gbm$byClass))
+  df_gbm$model <- "gbm"
+  names(df_gbm) <- make.names(names(df_gbm))
   
+  df_lda <- as.data.frame(t(confuse_lda$byClass))
+  df_lda$model <- "lda"
+  names(df_lda) <- make.names(names(df_lda))
+  
+  df_glm <- as.data.frame(t(confuse_glm$byClass))
+  df_glm$model <- "glm"
+  names(df_glm) <- make.names(names(df_glm))
+  
+  df_ens <- as.data.frame(t(confuse_comb$byClass))
+  df_ens$model <- "ensemble"
+  names(df_ens) <- make.names(names(df_ens))
+  
+  all_stats_df <- rbind(df_rf, df_gbm, df_lda, df_glm, df_ens)
+  write.csv(all_stats_df, save_stats_filename, row.names = F)
+  
+  all_stats_df
 }
