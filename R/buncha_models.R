@@ -8,22 +8,36 @@ run_buncha_models <- function (window_size = 30) {
                             window_size)
   trainset <- load_window_features(output_filename=output_filename)
   trainset <- trainset[rowSums(is.na(trainset)) == 0,]
+  trainset <- subset(trainset, select=-c(id, window_id, segnum, n_dropout_rows))
   trainset$target <- factor(trainset$target, levels=c(0,1), labels=c('interictal', 'preictal'))
+  print(names(trainset))
+  
+  # nosampling
+  print("nosampling info")
+  print(table(trainset$target))
+  buncha_models.scale(trainset = trainset, 
+                      save_stats_filename="buncha_model_stats_quick_FALSE_nosampling_SCALE.csv")
   
   # downsample
   down_train <- downSample(x=subset(trainset, select=-c(target)), y=trainset$target, yname="target")
   print("downsample info")
   print(table(down_train$target))
-  buncha_models.scale(trainset = trainset, 
+  buncha_models.scale(trainset = down_train, 
                       save_stats_filename="buncha_model_stats_quick_FALSE_downsample_CARET_SCALE.csv")
   
   # upsample
   up_train <- upSample(x=subset(trainset, select=-c(target)), y=trainset$target, yname="target")
   print("upsample info")
   print(table(up_train$target))
-  buncha_models.scale(trainset = trainset, 
+  buncha_models.scale(trainset = up_train, 
                       save_stats_filename="buncha_model_stats_quick_FALSE_upsample_CARET_SCALE.csv")
   
+  # smote
+  smote_train <- SMOTE(target ~ ., data=trainset)
+  print("smote info")
+  print(table(smote_train$target))
+  buncha_models.scale(trainset = smote_train, 
+                      save_stats_filename="buncha_model_stats_quick_FALSE_smote_CARET_SCALE.csv")
 
 }
 
@@ -32,6 +46,7 @@ run_buncha_models.manual_downsample <- function (window_size = 30) {
                             window_size)
   trainset <- load_window_features(output_filename=output_filename)
   trainset <- trainset[rowSums(is.na(trainset)) == 0,]
+  trainset <- subset(trainset, select=-c(id, window_id, segnum, n_dropout_rows))
   trainset$target <- factor(trainset$target, levels=c(0,1), labels=c('interictal', 'preictal'))
   buncha_models.scale(trainset = trainset, 
                 downsample_negclass=10000,
@@ -51,7 +66,7 @@ buncha_models <- function(trainset, seed=1234, quick=FALSE, downsample_negclass=
   }
   
   # remove columns that we don't train on
-  trainset <- subset(trainset, select=-c(id, window_id, segnum, fft_phase_entropy, n_dropout_rows))
+  # trainset <- subset(trainset, select=-c(id, window_id, segnum, fft_phase_entropy, n_dropout_rows))
   
   print(sprintf("after removing columns: %s, %s", dim(trainset)[1],
                 dim(trainset)[2]))
@@ -142,17 +157,17 @@ buncha_models <- function(trainset, seed=1234, quick=FALSE, downsample_negclass=
 buncha_models.scale <- function(trainset, seed=1234, quick=FALSE, downsample_negclass=0, save_stats_filename="buncha_model_stats.csv") {
   set.seed(seed)
   
-  if (quick) {
-    # downsample, so we can run quicker
-    trainset <- sample_data(trainset, n_neg_samples=1000, n_pos_samples=500)
-  } else if (downsample_negclass){
-    trainset <- sample_data(trainset, 
-                            n_neg_samples=downsample_negclass, 
-                            n_pos_samples=0)
-  } 
+  # if (quick) {
+  #   # downsample, so we can run quicker
+  #   trainset <- sample_data(trainset, n_neg_samples=1000, n_pos_samples=500)
+  # } else if (downsample_negclass){
+  #   trainset <- sample_data(trainset, 
+  #                           n_neg_samples=downsample_negclass, 
+  #                           n_pos_samples=0)
+  # } 
   
   # remove columns that we don't train on
-  trainset <- subset(trainset, select=-c(id, window_id, segnum, fft_phase_entropy, n_dropout_rows))
+  # trainset <- subset(trainset, select=-c(id, window_id, segnum, fft_phase_entropy, n_dropout_rows))
   
   print(sprintf("after removing columns: %s, %s", dim(trainset)[1],
                 dim(trainset)[2]))
