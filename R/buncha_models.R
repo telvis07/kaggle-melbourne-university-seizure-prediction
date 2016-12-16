@@ -1,6 +1,7 @@
 # generate features for various window sizes
 source("correlation_features.R")
 source("sample_data.R")
+library(DMwR)
 
 run_buncha_models <- function (window_size = 30) {
   output_filename = sprintf("../data/features/corr_fft_basicstats.20161202/train_1_window_%s_secs_correlation_and_fft.testing.txt", 
@@ -8,9 +9,9 @@ run_buncha_models <- function (window_size = 30) {
   trainset <- load_window_features(output_filename=output_filename)
   trainset <- trainset[rowSums(is.na(trainset)) == 0,]
   trainset$target <- factor(trainset$target, levels=c(0,1), labels=c('interictal', 'preictal'))
-  buncha_models(trainset = trainset, 
-                downsample_negclass=5000,
-                save_stats_filename="buncha_model_stats_quick_FALSE_downsample_5000.csv")
+  buncha_models.scale(trainset = trainset, 
+                downsample_negclass=10000,
+                save_stats_filename="buncha_model_stats_quick_FALSE_downsample_10000_SCALE.csv")
 }
 
 buncha_models <- function(trainset, seed=1234, quick=FALSE, downsample_negclass=0, save_stats_filename="buncha_model_stats.csv") {
@@ -88,7 +89,7 @@ buncha_models <- function(trainset, seed=1234, quick=FALSE, downsample_negclass=
   
   #####
   df_rf <- as.data.frame(t(confuse_rf$byClass))
-  df_rf$model <- "glm"
+  df_rf$model <- "rf"
   names(df_rf) <- make.names(names(df_rf))
   
   df_gbm <- as.data.frame(t(confuse_gbm$byClass))
@@ -114,14 +115,16 @@ buncha_models <- function(trainset, seed=1234, quick=FALSE, downsample_negclass=
 }
 
 
-buncha_models.scale <- function(trainset, seed=1234, quick=FALSE, save_stats_filename="buncha_model_stats.csv") {
+buncha_models.scale <- function(trainset, seed=1234, quick=FALSE, downsample_negclass=0, save_stats_filename="buncha_model_stats.csv") {
   set.seed(seed)
   
   if (quick) {
     # downsample, so we can run quicker
-    trainset <- sample_data(trainset)
-    ntree = 10
-    n_rf_number = 5
+    trainset <- sample_data(trainset, n_neg_samples=1000, n_pos_samples=500)
+  } else if (downsample_negclass){
+    trainset <- sample_data(trainset, 
+                            n_neg_samples=downsample_negclass, 
+                            n_pos_samples=0)
   } 
   
   # remove columns that we don't train on
@@ -188,7 +191,7 @@ buncha_models.scale <- function(trainset, seed=1234, quick=FALSE, save_stats_fil
   
   #####
   df_rf <- as.data.frame(t(confuse_rf$byClass))
-  df_rf$model <- "glm"
+  df_rf$model <- "rf"
   names(df_rf) <- make.names(names(df_rf))
   
   df_gbm <- as.data.frame(t(confuse_gbm$byClass))
