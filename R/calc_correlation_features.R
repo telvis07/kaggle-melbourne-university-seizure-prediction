@@ -24,7 +24,7 @@ run_features <- function(){
 
 run_features.train <- function(){
   
-  for (patient_id in c(2,3,4)){
+  for (patient_id in c(2,3)){
     print(sprintf("Generating features for patient_id : %s", patient_id))
     window_size = 30
     output_filename=sprintf("../data/features/train_%s_window_%s_secs_correlation_and_fft.testing.txt", patient_id, window_size)
@@ -39,7 +39,7 @@ run_features.train <- function(){
 
 run_features.test <- function(){
   
-  for (patient_id in c(1,2,3,4)){
+  for (patient_id in c(1,2,3)){
     print(sprintf("Generating features for patient_id : %s", patient_id))
     window_size = 30
     output_filename=sprintf("../data/features/test_%s_new_window_%s_secs_correlation_and_fft.testing.txt", patient_id, window_size)
