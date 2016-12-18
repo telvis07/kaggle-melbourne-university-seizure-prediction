@@ -4,7 +4,7 @@ source("sample_data.R")
 library(DMwR)
 
 run_buncha_models <- function (window_size = 30) {
-  output_filename = sprintf("../data/features/corr_fft_basicstats.20161202/train_1_window_%s_secs_correlation_and_fft.testing.txt", 
+  output_filename = sprintf("../data/features/corr_fft_basicstats.20161202/train_2_window_%s_secs_correlation_and_fft.testing.txt", 
                             window_size)
   trainset <- load_window_features(output_filename=output_filename)
   trainset <- trainset[rowSums(is.na(trainset)) == 0,]
@@ -16,28 +16,28 @@ run_buncha_models <- function (window_size = 30) {
   print("nosampling info")
   print(table(trainset$target))
   buncha_models.scale(trainset = trainset, 
-                      save_stats_filename="buncha_model_stats_quick_FALSE_nosampling_SCALE.csv")
+                      save_stats_filename="patient_2_buncha_model_stats_quick_FALSE_nosampling_SCALE.csv")
   
   # downsample
   down_train <- downSample(x=subset(trainset, select=-c(target)), y=trainset$target, yname="target")
   print("downsample info")
   print(table(down_train$target))
   buncha_models.scale(trainset = down_train, 
-                      save_stats_filename="buncha_model_stats_quick_FALSE_downsample_CARET_SCALE.csv")
+                      save_stats_filename="patient_2_buncha_model_stats_quick_FALSE_downsample_CARET_SCALE.csv")
   
   # upsample
   up_train <- upSample(x=subset(trainset, select=-c(target)), y=trainset$target, yname="target")
   print("upsample info")
   print(table(up_train$target))
   buncha_models.scale(trainset = up_train, 
-                      save_stats_filename="buncha_model_stats_quick_FALSE_upsample_CARET_SCALE.csv")
+                      save_stats_filename="patient_2_buncha_model_stats_quick_FALSE_upsample_CARET_SCALE.csv")
   
   # smote
   smote_train <- SMOTE(target ~ ., data=trainset)
   print("smote info")
   print(table(smote_train$target))
   buncha_models.scale(trainset = smote_train, 
-                      save_stats_filename="buncha_model_stats_quick_FALSE_smote_CARET_SCALE.csv")
+                      save_stats_filename="patient_2_buncha_model_stats_quick_FALSE_smote_CARET_SCALE.csv")
 
 }
 
