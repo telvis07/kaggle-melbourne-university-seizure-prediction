@@ -15,6 +15,9 @@ get_target_from_id <- function(filename) {
 }
 
 ensemble_modeling.1.rf.train <- function(window_size = 30, quick=T) {
+  # TODO: Grid Search
+  # http://machinelearningmastery.com/tuning-machine-learning-models-using-the-caret-r-package/
+  
   features_filename = sprintf("../data/features/corr_fft_basicstats.20161202/train_1_window_%s_secs_correlation_and_fft.testing.txt", 
                             window_size)
   train_1_preds_filename = sprintf("../data/features/train_1_window_%s_secs_correlation_and_fft.predictions.txt", 
