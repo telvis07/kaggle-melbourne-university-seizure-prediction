@@ -4,41 +4,56 @@ source("sample_data.R")
 library(DMwR)
 
 run_buncha_models <- function (window_size = 30) {
-  output_filename = sprintf("../data/features/corr_fft_basicstats.20161202/train_2_window_%s_secs_correlation_and_fft.testing.txt", 
+  output_filename = sprintf("../data/features/corr_fft_basicstats.20161202/train_1_window_%s_secs_correlation_and_fft.testing.txt", 
                             window_size)
+  
+  set.seed(1234)
+  
+  print(sprintf("Loading: %s", output_filename))
   trainset <- load_window_features(output_filename=output_filename)
   trainset <- trainset[rowSums(is.na(trainset)) == 0,]
   trainset <- subset(trainset, select=-c(id, window_id, segnum, n_dropout_rows))
   trainset$target <- factor(trainset$target, levels=c(0,1), labels=c('interictal', 'preictal'))
   print(names(trainset))
   
-  # nosampling
-  print("nosampling info")
-  print(table(trainset$target))
-  buncha_models.scale(trainset = trainset, 
-                      save_stats_filename="patient_2_buncha_model_stats_quick_FALSE_nosampling_SCALE.csv")
-  
-  # downsample
-  down_train <- downSample(x=subset(trainset, select=-c(target)), y=trainset$target, yname="target")
-  print("downsample info")
-  print(table(down_train$target))
-  buncha_models.scale(trainset = down_train, 
-                      save_stats_filename="patient_2_buncha_model_stats_quick_FALSE_downsample_CARET_SCALE.csv")
+  # train/test split
+  inTrain = createDataPartition(trainset$target, p = 3/4)[[1]]
+  training = trainset[ inTrain,]
+  testing = trainset[-inTrain,]
   
   # upsample
-  up_train <- upSample(x=subset(trainset, select=-c(target)), y=trainset$target, yname="target")
+  up_train <- upSample(x=subset(training, select=-c(target)), y=training$target, yname="target")
   print("upsample info")
   print(table(up_train$target))
   buncha_models.scale(trainset = up_train, 
-                      save_stats_filename="patient_2_buncha_model_stats_quick_FALSE_upsample_CARET_SCALE.csv")
+                      testset = testing,
+                      save_stats_filename="patient_1_buncha_model_stats_quick_FALSE_upsample_CARET_SCALE.csv")
   
+  # downsample
+  down_train <- downSample(x=subset(training, select=-c(target)), y=training$target, yname="target")
+  print("downsample info")
+  print(table(down_train$target))
+  buncha_models.scale(trainset = down_train, 
+                      testset = testing,
+                      save_stats_filename="patient_1_buncha_model_stats_quick_FALSE_downsample_CARET_SCALE.csv")
+  
+
   # smote
-  smote_train <- SMOTE(target ~ ., data=trainset)
+  smote_train <- SMOTE(target ~ ., data=training)
   print("smote info")
   print(table(smote_train$target))
   buncha_models.scale(trainset = smote_train, 
-                      save_stats_filename="patient_2_buncha_model_stats_quick_FALSE_smote_CARET_SCALE.csv")
+                      testset = testing,
+                      save_stats_filename="patient_1_buncha_model_stats_quick_FALSE_smote_CARET_SCALE.csv")
 
+
+  # nosampling
+  print("nosampling info")
+  print(table(trainset$target))
+  buncha_models.scale(trainset = training,
+                      testset = testing,
+                      save_stats_filename="patient_1_buncha_model_stats_quick_FALSE_nosampling_SCALE.csv")  
+  
 }
 
 run_buncha_models.manual_downsample <- function (window_size = 30) {
@@ -154,7 +169,7 @@ buncha_models <- function(trainset, seed=1234, quick=FALSE, downsample_negclass=
 }
 
 
-buncha_models.scale <- function(trainset, seed=1234, quick=FALSE, downsample_negclass=0, save_stats_filename="buncha_model_stats.csv") {
+buncha_models.scale <- function(trainset, testset=NULL, seed=1234, quick=FALSE, downsample_negclass=0, save_stats_filename="buncha_model_stats.csv") {
   set.seed(seed)
   
   # if (quick) {
@@ -169,13 +184,19 @@ buncha_models.scale <- function(trainset, seed=1234, quick=FALSE, downsample_neg
   # remove columns that we don't train on
   # trainset <- subset(trainset, select=-c(id, window_id, segnum, fft_phase_entropy, n_dropout_rows))
   
-  print(sprintf("after removing columns: %s, %s", dim(trainset)[1],
-                dim(trainset)[2]))
+  # print(sprintf("after removing columns: %s, %s", dim(trainset)[1],
+  #               dim(trainset)[2]))
   
-  
-  inTrain = createDataPartition(trainset$target, p = 3/4)[[1]]
-  training = trainset[ inTrain,]
-  testing = trainset[-inTrain,]
+  if (is.null(testset)) {
+    print("CREATING train/test split")
+    inTrain = createDataPartition(trainset$target, p = 3/4)[[1]]
+    training = trainset[ inTrain,]
+    testing = trainset[-inTrain,]
+  } else {
+    print("USING testset created by caller")
+    training = trainset
+    testing = testset
+  }
   
   print(sprintf("training dim: %s", dim(training)[1] ))
   print(sprintf("testing dim: %s", dim(testing)[1] ))
