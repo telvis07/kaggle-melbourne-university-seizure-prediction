@@ -1,20 +1,14 @@
 # generate features for various window sizes
 source("correlation_features.R")
 source("sample_data.R")
+source("utils.R")
 library(DMwR)
 library(dplyr)
 library(ggplot2)
 library(pROC)
 
 
-get_target_from_id <- function(filename) {
-  s_base_filename <- basename(filename)
-  v_filename_parts <- strsplit(s_base_filename, "_")[[1]]
-  s_target <- v_filename_parts[3]
-  s_target <- gsub(".mat", "", s_target)
-  n_seg_num <- as.numeric(v_filename_parts[2])
-  as.numeric(s_target)
-}
+
 
 ensemble_modeling.1.rf.train <- function(window_size = 30, quick=T) {
   # TODO: Grid Search
