@@ -24,9 +24,9 @@ run_features <- function(){
 
 run_features.train <- function(){
   
-  for (patient_id in c(2,3)){
+  for (patient_id in c(1)){
     print(sprintf("Generating features for patient_id : %s", patient_id))
-    window_size = 10
+    window_size = 5
     output_filename=sprintf("../data/features/train_%s_window_%s_secs_correlation_and_fft.testing.txt", patient_id, window_size)
     print(sprintf("Generating : %s", output_filename))
     df <- process_windows_parallel(cores=4, 
@@ -39,9 +39,9 @@ run_features.train <- function(){
 
 run_features.test <- function(){
   
-  for (patient_id in c(1,2,3)){
+  for (patient_id in c(1)){
     print(sprintf("Generating features for patient_id : %s", patient_id))
-    window_size = 10
+    window_size = 5
     output_filename=sprintf("../data/features/test_%s_new_window_%s_secs_correlation_and_fft.testing.txt", patient_id, window_size)
     print(sprintf("Generating : %s", output_filename))
     df <- process_windows_parallel(cores=4, 
