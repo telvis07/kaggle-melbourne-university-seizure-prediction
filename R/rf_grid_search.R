@@ -77,7 +77,7 @@ rf.kfold.grid_search_parallel <- function(quick=T, n_folds=5, cores=4){
     v_rf_metrics <- c("Kappa")
     
   } else {
-    v_window_size <- c(5, 10, 30)
+    v_window_size <- c(5, 10, 30, 60, 120, 300)
     v_rf_ntree <- c(2, 10, 30, 50, 101, 300, 500, 1000)
     v_rf_mtry <- c(2,38,74,110,300)
     v_rf_metrics <- c("Accuracy", "Kappa")
