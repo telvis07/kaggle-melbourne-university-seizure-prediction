@@ -2,3 +2,6 @@
 .Rhistory
 .DS_Store
 data
+R/*.png
+R/*.txt
+R/*.csv

@@ -25,6 +25,16 @@ library(pROC)
 #   2. Calculate the average accuracy rate from the five test fold predictions
 # 3. Keep the K value with the best average CV accuracy rate
 ensemble_modeling.kfoldid <- function(window_size = 30, quick=F, n_folds=5) {
+  # trainset <- ensemble_modeling.kfoldid(window_size = 300, quick=F, n_folds=5)
+  # trainset <- ensemble_modeling.kfoldid(window_size = 120, quick=F, n_folds=5)
+  # trainset <- ensemble_modeling.kfoldid(window_size = 60, quick=F, n_folds=5)
+  # trainset <- ensemble_modeling.kfoldid(window_size = 30, quick=F, n_folds=5)
+  # trainset <- ensemble_modeling.kfoldid(window_size = 10, quick=F, n_folds=5)
+  # trainset <- ensemble_modeling.kfoldid(window_size = 5, quick=F, n_folds=5)
+  
+  # trainset <- ensemble_modeling.kfoldid(window_size = 30, quick=T, n_folds=5)
+  # trainset <- ensemble_modeling.kfoldid(window_size = 10, quick=T, n_folds=5)
+  # trainset <- ensemble_modeling.kfoldid(window_size = 5, quick=T, n_folds=5)
   set.seed(1234)
   features_filename = sprintf("../data/features/corr_fft_basicstats.20161202/train_1_window_%s_secs_correlation_and_fft.testing.txt", 
                               window_size)
@@ -59,116 +69,222 @@ ensemble_modeling.kfoldid <- function(window_size = 30, quick=F, n_folds=5) {
   trainset
 }
 
-rf.kfold.grid_search <- function(window_size = 30, quick=T, n_folds=5){
-  kfold_trainfile <- sprintf("train_1_window_%s_secs_correlation_and_fft.kfold.quick_%s.txt", window_size, quick)
-  trainset <- read.csv(kfold_trainfile, header=T, stringsAsFactors = F)
-  print(table(trainset$fold))
-  # trainset <- ensemble_modeling.kfoldid(window_size=window_size, quick = quick, n_folds=n_folds) 
-  v_all_folds = seq(5)
-  
-  # TODO: Add window length
+rf.kfold.grid_search_parallel <- function(quick=T, n_folds=5, cores=4){
   if (quick) {
+    v_window_size <- c(10, 30)
     v_rf_ntree <- c(5, 10)
     v_rf_mtry <- c(2,74)
     v_rf_metrics <- c("Kappa")
     
   } else {
+    v_window_size <- c(5, 10, 30)
     v_rf_ntree <- c(2, 10, 30, 50, 101, 300, 500, 1000)
     v_rf_mtry <- c(2,38,74,110,300)
     v_rf_metrics <- c("Accuracy", "Kappa")
   }
-
-
+  
+  
   n_parameters <- length(v_rf_metrics) * length(v_rf_ntree) * length(v_rf_mtry)
-  df_grid_parameters <- as.data.frame(matrix(NA, nrow=n_parameters, ncol=3))
-  names(df_grid_parameters) <- c("rf_metric", "rf_ntree", "rf_mtry")
+  tasks <- NULL
   
   i <- 1
-  for (metric in v_rf_metrics){
+  for (metric in v_rf_metrics) {
     for (ntree in v_rf_ntree) { 
-      for (mtry in v_rf_mtry){
-        df_grid_parameters[i,] <- c(metric, ntree, mtry)
-        i = i + 1
+      for (mtry in v_rf_mtry) {
+        for (window_size in v_window_size){
+          task <- list(window_size=window_size, quick=quick, n_folds=n_folds, metric=metric, ntree=ntree, mtry=mtry)
+          tasks <- c(tasks, list(task)) 
+        }
       }
     }
   }
   
-  # convert to data.frame
-  df_grid_parameters <- mutate(df_grid_parameters, rf_ntree=as.numeric(rf_ntree), rf_mtry=as.numeric(rf_mtry))
-  all_stats_df <- data.frame()
+  print(sprintf("Number of tasks: %s", length(tasks)))
   
-  # for each rf parameter
-  for (i in seq(n_parameters)){
-      # for each test fold
-      for (n_fold in seq(n_folds)){
-        print(sprintf("parameters: %s", paste(df_grid_parameters[i,], collapse =",")))
-        metric <- df_grid_parameters[i,]$rf_metric
-        ntree <- df_grid_parameters[i,]$rf_ntree
-        mtry <- df_grid_parameters[i,]$rf_mtry
-
-        print(sprintf("GRID Params: metric: %s, ntree: %s, mtry: %s", metric, ntree, mtry))
-        v_training_folds <- setdiff(v_all_folds, c(n_fold))
-        v_test_fold <- c(n_fold)
-        print(sprintf("test_fold: %s, training_folds: %s", paste(v_training_folds, collapse=","), paste(v_test_fold, collapse = ",")))
-        
-        # test on this fold
-        df_testing <- filter(trainset, fold %in% v_test_fold)
-        
-        # Combine the other four folds to be used as a training fold
-        df_training <- filter(trainset, fold %in% v_training_folds)
-
-        print(sprintf("train_fold length: %s, test_fold_length: %s", dim(df_training)[1], dim(df_testing)[1]))
-        
-        # cleanup cleanup rows and smote
-        df_training$target <- factor(df_training$target, levels=c('interictal', 'preictal'))
-        df_training <- subset(df_training, select=-c(id, window_id, segnum, n_dropout_rows, fold, rowid))
-        smote_train <- SMOTE(target ~ ., data=df_training)
-
-        # train a random forest model
-        fit_rf <- train(target ~ ., data=smote_train, method="rf", 
-                        ntree=ntree,
-                        tuneGrid=expand.grid(mtry=c(mtry)),
-                        metric=metric)
-        
-        # calc stats
-        prediction_rf <- predict(fit_rf, df_testing)
-        cm = as.matrix(table("Actual"=df_testing$target, "Predicted"=prediction_rf))
-        n = sum(cm) # number of instances
-        nc = nrow(cm) # number of classes
-        diag = diag(cm) # number of correctly classified instances per class 
-        rowsums = apply(cm, 1, sum) # number of instances per class
-        colsums = apply(cm, 2, sum) # number of predictions per class
-        p = rowsums / n # distribution of instances over the actual classes
-        q = colsums / n # distribution of instances over the predicted classes
-        
-        # accuracy
-        accuracy = sum(diag) / n
-        
-        # precision/recall/f1
-        precision = diag / colsums 
-        recall = diag / rowsums 
-        f1 = 2 * precision * recall / (precision + recall) 
-        
-
-        df_stats <- data.frame(precision=precision[2], 
-                               recall=recall[2], 
-                               F1=f1[2],
-                               ntree=ntree,
-                               mtry=mtry,
-                               metric=metric,
-                               test_fold=n_fold) 
-        
-        all_stats_df <- rbind(all_stats_df, df_stats)
-
-      }
-  }
-
+  runtime <- system.time({
+    all_stats_df <- mclapply(tasks, rf.kfold.grid_search, mc.cores = cores, mc.silent = FALSE)
+  })[3]
   
+  print(sprintf("runtime : %s", runtime))
+  print(sprintf("length : %s", length(all_stats_df)))
+  all_stats_df <- do.call("rbind", all_stats_df)
+
   names(all_stats_df) <- make.names(names(all_stats_df))
   print("Writing rf_grid_search.csv")
   write.csv(all_stats_df, "rf_grid_search.csv", row.names = F)
+  
+  # sort by F1, recall
   ord <- order(all_stats_df$F1, all_stats_df$recall, decreasing = T)
+  all_stats_df <- all_stats_df[ord,]
   all_stats_df
+  
+}
+
+
+rf.kfold.grid_search <- function(task){
+  # Expects to be called by rf.kfold.grid_search_parallel
+  # task has the parameters below:
+  
+  #
+  window_size <- task$window_size
+  n_folds <- task$n_folds
+  quick <- task$quick
+  metric <- task$metric
+  ntree <- task$ntree
+  mtry <- task$mtry
+  
+  # 
+  kfold_trainfile <- sprintf("train_1_window_%s_secs_correlation_and_fft.kfold.quick_%s.txt", window_size, quick)
+  trainset <- read.csv(kfold_trainfile, header=T, stringsAsFactors = F)
+  print(table(trainset$fold))
+  v_all_folds = seq(n_folds)
+  
+  print(sprintf("GRID Params: metric: %s, ntree: %s, mtry: %s", metric, ntree, mtry))
+  all_stats_df <- data.frame()
+  
+  for (n_fold in seq(n_folds)){
+    v_training_folds <- setdiff(v_all_folds, c(n_fold))
+    v_test_fold <- c(n_fold)
+    print(sprintf("test_fold: %s, training_folds: %s", paste(v_training_folds, collapse=","), paste(v_test_fold, collapse = ",")))
+  
+    # test on this fold
+    df_testing <- filter(trainset, fold %in% v_test_fold)
+  
+    # Combine the other four folds to be used as a training fold
+    df_training <- filter(trainset, fold %in% v_training_folds)
+  
+    print(sprintf("train_fold length: %s, test_fold_length: %s", dim(df_training)[1], dim(df_testing)[1]))
+  
+    # cleanup cleanup rows and smote
+    df_training$target <- factor(df_training$target, levels=c('interictal', 'preictal'))
+    df_training <- subset(df_training, select=-c(id, window_id, segnum, n_dropout_rows, fold, rowid))
+    smote_train <- SMOTE(target ~ ., data=df_training)
+  
+    # train a random forest model
+    fit_rf <- train(target ~ ., data=smote_train, method="rf",
+                    ntree=ntree,
+                    tuneGrid=expand.grid(mtry=c(mtry)),
+                    metric=metric)
+  
+    # calc stats
+    prediction_rf <- predict(fit_rf, df_testing)
+    cm = as.matrix(table("Actual"=df_testing$target, "Predicted"=prediction_rf))
+    n = sum(cm) # number of instances
+    nc = nrow(cm) # number of classes
+    diag = diag(cm) # number of correctly classified instances per class
+    rowsums = apply(cm, 1, sum) # number of instances per class
+    colsums = apply(cm, 2, sum) # number of predictions per class
+    p = rowsums / n # distribution of instances over the actual classes
+    q = colsums / n # distribution of instances over the predicted classes
+  
+    # accuracy
+    accuracy = sum(diag) / n
+  
+    # precision/recall/f1
+    precision = diag / colsums
+    recall = diag / rowsums
+    f1 = 2 * precision * recall / (precision + recall)
+  
+  
+    df_stats <- data.frame(precision=precision[2],
+                           recall=recall[2],
+                           F1=f1[2])
+    all_stats_df <- rbind(all_stats_df, df_stats)
+  }
+  
+  # get the average precision, recall, F1
+  all_stats_df <- data.frame(precision=mean(all_stats_df$precision),
+                             recall=mean(all_stats_df$recall),
+                             F1=mean(all_stats_df$F1),
+                             ntree=ntree,
+                             mtry=mtry,
+                             metric=metric,
+                             window_size=window_size)
+
+  names(all_stats_df) <- make.names(names(all_stats_df))
+  all_stats_df
+  
+  
+  
+  # 
+  # 
+  # 
+  # # convert to data.frame
+  # df_grid_parameters <- mutate(df_grid_parameters, rf_ntree=as.numeric(rf_ntree), rf_mtry=as.numeric(rf_mtry))
+  # all_stats_df <- data.frame()
+  # 
+  # # for each rf parameter
+  # for (i in seq(n_parameters)){
+  #     # for each test fold
+  #     for (n_fold in seq(n_folds)){
+  #       print(sprintf("parameters: %s", paste(df_grid_parameters[i,], collapse =",")))
+  #       metric <- df_grid_parameters[i,]$rf_metric
+  #       ntree <- df_grid_parameters[i,]$rf_ntree
+  #       mtry <- df_grid_parameters[i,]$rf_mtry
+  # 
+  #       print(sprintf("GRID Params: metric: %s, ntree: %s, mtry: %s", metric, ntree, mtry))
+  #       v_training_folds <- setdiff(v_all_folds, c(n_fold))
+  #       v_test_fold <- c(n_fold)
+  #       print(sprintf("test_fold: %s, training_folds: %s", paste(v_training_folds, collapse=","), paste(v_test_fold, collapse = ",")))
+  #       
+  #       # test on this fold
+  #       df_testing <- filter(trainset, fold %in% v_test_fold)
+  #       
+  #       # Combine the other four folds to be used as a training fold
+  #       df_training <- filter(trainset, fold %in% v_training_folds)
+  # 
+  #       print(sprintf("train_fold length: %s, test_fold_length: %s", dim(df_training)[1], dim(df_testing)[1]))
+  #       
+  #       # cleanup cleanup rows and smote
+  #       df_training$target <- factor(df_training$target, levels=c('interictal', 'preictal'))
+  #       df_training <- subset(df_training, select=-c(id, window_id, segnum, n_dropout_rows, fold, rowid))
+  #       smote_train <- SMOTE(target ~ ., data=df_training)
+  # 
+  #       # train a random forest model
+  #       fit_rf <- train(target ~ ., data=smote_train, method="rf", 
+  #                       ntree=ntree,
+  #                       tuneGrid=expand.grid(mtry=c(mtry)),
+  #                       metric=metric)
+  #       
+  #       # calc stats
+  #       prediction_rf <- predict(fit_rf, df_testing)
+  #       cm = as.matrix(table("Actual"=df_testing$target, "Predicted"=prediction_rf))
+  #       n = sum(cm) # number of instances
+  #       nc = nrow(cm) # number of classes
+  #       diag = diag(cm) # number of correctly classified instances per class 
+  #       rowsums = apply(cm, 1, sum) # number of instances per class
+  #       colsums = apply(cm, 2, sum) # number of predictions per class
+  #       p = rowsums / n # distribution of instances over the actual classes
+  #       q = colsums / n # distribution of instances over the predicted classes
+  #       
+  #       # accuracy
+  #       accuracy = sum(diag) / n
+  #       
+  #       # precision/recall/f1
+  #       precision = diag / colsums 
+  #       recall = diag / rowsums 
+  #       f1 = 2 * precision * recall / (precision + recall) 
+  #       
+  # 
+  #       df_stats <- data.frame(precision=precision[2], 
+  #                              recall=recall[2], 
+  #                              F1=f1[2],
+  #                              ntree=ntree,
+  #                              mtry=mtry,
+  #                              metric=metric,
+  #                              test_fold=n_fold) 
+  #       
+  #       all_stats_df <- rbind(all_stats_df, df_stats)
+  # 
+  #     }
+  # }
+  # 
+  # 
+  # names(all_stats_df) <- make.names(names(all_stats_df))
+  # print("Writing rf_grid_search.csv")
+  # write.csv(all_stats_df, "rf_grid_search.csv", row.names = F)
+  # ord <- order(all_stats_df$F1, all_stats_df$recall, decreasing = T)
+  # all_stats_df
 }
 
 # ensemble_modeling.1.rf.grid_search <- function(window_size = 30, quick=T) {
