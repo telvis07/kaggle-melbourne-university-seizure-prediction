@@ -8,6 +8,8 @@ library(ggplot2)
 library(pROC)
 
 
+
+
 ensemble_modeling.1.rf.train <- function(window_size = 30, quick=T) {
   # TODO: Grid Search
   # http://machinelearningmastery.com/tuning-machine-learning-models-using-the-caret-r-package/
