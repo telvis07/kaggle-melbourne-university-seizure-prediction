@@ -341,36 +341,9 @@ create_meta_trainset <- function(window_size=30, metric="Accuracy", ntree=50, mt
   
 }
 
-calc_perf_stats <- function(cm){
-  # cm : confusion matrix
-  
-  # calc stats
-  n = sum(cm) # number of instances
-  nc = nrow(cm) # number of classes
-  diag = diag(cm) # number of correctly classified instances per class
-  rowsums = apply(cm, 1, sum) # number of instances per class
-  colsums = apply(cm, 2, sum) # number of predictions per class
-  p = rowsums / n # distribution of instances over the actual classes
-  q = colsums / n # distribution of instances over the predicted classes
-  
-  # accuracy
-  accuracy = sum(diag) / n
-  
-  # precision/recall/f1
-  precision = diag / colsums
-  recall = diag / rowsums
-  f1 = 2 * precision * recall / (precision + recall)
-  
-  # add to data.frame 
-  df_stats <- data.frame(precision=precision[2],
-                         recall=recall[2],
-                         F1=f1[2])
-  
-  df_stats
-}
 
-show_grid_search_results <- function(filename="../data/models/rf_grid_search.csv") {
-  # > head(show_grid_search_results())
+show_grid_search_results.rf <- function(filename="../data/models/rf_grid_search.csv") {
+  # > head(show_grid_search_results.rf())
   # precision    recall        F1 ntree mtry   metric window_size
   # 69  0.2797997 0.4558048 0.3466332   300   38 Accuracy          30
   # 149 0.2797997 0.4558048 0.3466332   300   38    Kappa          30
