@@ -6,6 +6,9 @@ library(dplyr)
 library(ggplot2)
 library(pROC)
 
+# getModelInfo("rf")
+
+
 # TODO
 # In stratified k-fold cross-validation, the folds are 
 # selected so that the mean response value is approximately 
@@ -70,6 +73,8 @@ ensemble_modeling.kfoldid <- function(window_size = 30, quick=F, n_folds=5) {
 }
 
 rf.kfold.grid_search_parallel <- function(quick=T, n_folds=5, cores=4){
+  # See : getModelInfo("rf")
+
   set.seed(1234)
   
   if (quick) {
@@ -125,6 +130,8 @@ rf.kfold.grid_search_parallel <- function(quick=T, n_folds=5, cores=4){
 
 
 rf.kfold.grid_search <- function(task){
+  # See: getModelInfo("rf")
+
   set.seed(1234)
   
   # Expects to be called by rf.kfold.grid_search_parallel
@@ -213,7 +220,11 @@ rf.kfold.grid_search <- function(task){
   
 }
 
-rf.train_full <- function(window_size=30, metric="Kappa", ntree=10, mtry=74, quick=T) {
+rf.train_full <- function(window_size=30, metric="Accuracy", ntree=50, mtry=74, quick=T) {
+  # train the RF model using the parameters found during the grid search (see show_grid_search_results())
+  #     precision    recall        F1 ntree mtry   metric window_size
+  # 41  0.2722213 0.4697898 0.3443397    50   74 Accuracy          30
+  
   # train the RF model using the parameters found during the grid search
   set.seed(1234)
   
@@ -251,18 +262,82 @@ rf.train_full <- function(window_size=30, metric="Kappa", ntree=10, mtry=74, qui
   df_stats
 }
 
-create_meta_trainset <- function() {
-  # train the RF model using the parameters found during the grid search
+create_meta_trainset <- function(window_size=30, metric="Accuracy", ntree=50, mtry=74, n_folds=5, quick=T) {
+  # For each test fold
+  #   train a model on 4 other folds, test on left out fold
+  #   store predictions in trainset_meta
+  # Store train_meta
+  #
+  # Parameters: 
+  # train the RF model using the parameters found during the grid search (see show_grid_search_results())
+  #     precision    recall        F1 ntree mtry   metric window_size
+  # 41  0.2722213 0.4697898 0.3443397    50   74 Accuracy          30
   set.seed(1234)
   
   # load the datums with kfold IDs
   kfold_trainfile <- sprintf("train_1_window_%s_secs_correlation_and_fft.kfold.quick_%s.txt", window_size, quick)
   trainset <- read.csv(kfold_trainfile, header=T, stringsAsFactors = F)
   print(table(trainset$fold))
+  v_all_folds = seq(n_folds)
   
   # cleanup cleanup rows
   trainset$target <- factor(trainset$target, levels=c('interictal', 'preictal'))
-  trainset_meta <- subset(trainset, select=c(id, window_id, segnum, n_dropout_rows, fold, rowid, target))
+  trainset_meta <- subset(trainset, select=c(id, fold, rowid, target))
+  trainset_meta <- mutate(trainset_meta, M1=NA)
+  
+  for (n_fold in seq(n_folds)){
+    v_training_folds <- setdiff(v_all_folds, c(n_fold))
+    v_test_fold <- c(n_fold)
+    print(sprintf("test_fold: %s, training_folds: %s", paste(v_training_folds, collapse=","), paste(v_test_fold, collapse = ",")))
+    
+    # test on this fold
+    df_testing <- filter(trainset, fold %in% v_test_fold)
+    
+    # Combine the other four folds to be used as a training fold
+    df_training <- filter(trainset, fold %in% v_training_folds)
+    
+    print(sprintf("train_fold length: %s, test_fold_length: %s", dim(df_training)[1], dim(df_testing)[1]))
+    
+    # cleanup cleanup rows and smote
+    df_training$target <- factor(df_training$target, levels=c('interictal', 'preictal'))
+    df_training <- subset(df_training, select=-c(id, window_id, segnum, n_dropout_rows, fold, rowid))
+    smote_train <- SMOTE(target ~ ., data=df_training)
+    
+    # train a random forest model
+    fit_rf <- train(target ~ .,
+                    data=smote_train,
+                    method="rf",
+                    ntree=ntree,
+                    metric=metric,
+                    tuneGrid=expand.grid(mtry=c(mtry)))
+    
+    # calc stats
+    df_testing$M1 <- predict(fit_rf, df_testing)
+    cm = as.matrix(table("Actual"=df_testing$target, "Predicted"=df_testing$M1))
+    df_stats <- calc_perf_stats(cm)
+    print(df_stats)
+    
+    # 
+    trainset_meta <- merge(trainset_meta, subset(df_testing, select=c(rowid, M1)), by="rowid", all.x=T)
+    
+    # merge the M1 field, x = trainset_meta, y = df_testing. 
+    # Use df_testing.M1 if trainset_meta.M1 is null
+    trainset_meta <- mutate(trainset_meta, M1=ifelse(is.na(M1.x), M1.y, M1.x))
+    # remove merge cols (.x, .y)
+    trainset_meta <- subset(trainset_meta, select=c(id, fold, rowid, target, M1))
+
+    print("trainset_meta folds with predictions")
+    print(table(trainset_meta[!is.na(trainset_meta$M1),]$fold))
+  }
+  
+  # change the labels back to the factor strings
+  trainset_meta$M1 <- factor(trainset_meta$M1, levels=c(1,2), labels=c('interictal', 'preictal'))
+  
+  outfile <- sprintf("train_meta_1_MODEL_1_window_%s_secs_correlation_and_fft.kfold.quick_%s.txt", window_size, quick)
+  print(sprintf("Writing train_meta data to : %s", outfile))
+  write.csv(trainset_meta, outfile, row.names = F)
+  
+  trainset_meta
   
 }
 
@@ -292,4 +367,22 @@ calc_perf_stats <- function(cm){
                          F1=f1[2])
   
   df_stats
+}
+
+show_grid_search_results <- function(filename="../data/models/rf_grid_search.csv") {
+  # > head(show_grid_search_results())
+  # precision    recall        F1 ntree mtry   metric window_size
+  # 69  0.2797997 0.4558048 0.3466332   300   38 Accuracy          30
+  # 149 0.2797997 0.4558048 0.3466332   300   38    Kappa          30
+  # 41  0.2722213 0.4697898 0.3443397    50   74 Accuracy          30
+  # 121 0.2722213 0.4697898 0.3443397    50   74    Kappa          30
+  # 74  0.2706729 0.4539553 0.3389850   300   74 Accuracy          60
+  # 154 0.2706729 0.4539553 0.3389850   300   74    Kappa          60
+  
+  
+  
+  df_stats <- read.csv(filename, header=T, stringsAsFactors = F)
+  ord <- order(df_stats$F1, df_stats$recall, decreasing = T)
+  df_stats[ord,]
+  
 }

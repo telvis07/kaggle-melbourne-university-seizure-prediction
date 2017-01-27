@@ -8,6 +8,23 @@ library(ggplot2)
 library(pROC)
 
 
+predict_kaggle_rf_glm <- function(){
+  
+  # train the RF model using the parameters found during the grid search (see show_grid_search_results())
+  #     precision    recall        F1 ntree mtry   metric window_size
+  # 41  0.2722213 0.4697898 0.3443397    50   74 Accuracy          30
+  
+  
+  
+  # load the model
+  rf_model_filename=sprintf("../data/models/train_1_window_%s_secs_correlation_and_fft.quick_%s.random_forest.rds", 
+                            window_size, quick)
+  
+  print("Loading models")
+  fit_rf <- readRDS(rf_model_filename)
+  
+  # TODO: load glm model from grid search
+}
 
 
 ensemble_modeling.1.rf.train <- function(window_size = 30, quick=T) {
