@@ -220,48 +220,6 @@ rf.kfold.grid_search <- function(task){
   
 }
 
-rf.train_full <- function(window_size=30, metric="Accuracy", ntree=50, mtry=74, quick=T) {
-  # train the RF model using the parameters found during the grid search (see show_grid_search_results())
-  #     precision    recall        F1 ntree mtry   metric window_size
-  # 41  0.2722213 0.4697898 0.3443397    50   74 Accuracy          30
-  
-  # train the RF model using the parameters found during the grid search
-  set.seed(1234)
-  
-  # load the datums with kfold IDs
-  kfold_trainfile <- sprintf("train_1_window_%s_secs_correlation_and_fft.kfold.quick_%s.txt", window_size, quick)
-  trainset <- read.csv(kfold_trainfile, header=T, stringsAsFactors = F)
-  print(table(trainset$fold))
-  
-  # cleanup cleanup rows
-  trainset$target <- factor(trainset$target, levels=c('interictal', 'preictal'))
-  trainset <- subset(trainset, select=-c(id, window_id, segnum, n_dropout_rows, fold, rowid))
-  
-  # Train with all the DATA with SMOTE
-  print("SMOTE all the datums")
-  smote_trainset <- SMOTE(target ~ ., data=trainset)
-  print("Train with all the DATA with SMOTE")
-  fit_rf <- train(target ~ .,
-                  data=smote_trainset,
-                  method="rf",
-                  ntree=ntree,
-                  metric=metric,
-                  tuneGrid=expand.grid(mtry=c(mtry)))
-  
-  # get performance on training datums. hopefully not overfit. :-)
-  prediction_rf <- predict(fit_rf, trainset)
-  cm = as.matrix(table("Actual"=trainset$target, "Predicted"=prediction_rf))
-  df_stats <- calc_perf_stats(cm)
-  
-  # store the model
-  save_model_filename=sprintf("../data/models/train_1_window_%s_secs_correlation_and_fft.quick_%s.random_forest.rds", window_size, quick)
-  print(sprintf("Saving RDS: %s", save_model_filename))
-  saveRDS(fit_rf, save_model_filename)
-  
-  # 
-  df_stats
-}
-
 create_meta_trainset <- function(window_size=30, metric="Accuracy", ntree=50, mtry=74, n_folds=5, quick=T) {
   # For each test fold
   #   train a model on 4 other folds, test on left out fold
@@ -342,6 +300,49 @@ create_meta_trainset <- function(window_size=30, metric="Accuracy", ntree=50, mt
 }
 
 
+rf.train_full <- function(window_size=30, metric="Accuracy", ntree=50, mtry=74, quick=T) {
+  # train the RF model using the parameters found during the grid search (see show_grid_search_results())
+  #     precision    recall        F1 ntree mtry   metric window_size
+  # 41  0.2722213 0.4697898 0.3443397    50   74 Accuracy          30
+  
+  # train the RF model using the parameters found during the grid search
+  set.seed(1234)
+  
+  # load the datums with kfold IDs
+  kfold_trainfile <- sprintf("train_1_window_%s_secs_correlation_and_fft.kfold.quick_%s.txt", window_size, quick)
+  trainset <- read.csv(kfold_trainfile, header=T, stringsAsFactors = F)
+  print(table(trainset$fold))
+  
+  # cleanup cleanup rows
+  trainset$target <- factor(trainset$target, levels=c('interictal', 'preictal'))
+  trainset <- subset(trainset, select=-c(id, window_id, segnum, n_dropout_rows, fold, rowid))
+  
+  # Train with all the DATA with SMOTE
+  print("SMOTE all the datums")
+  smote_trainset <- SMOTE(target ~ ., data=trainset)
+  print("Train with all the DATA with SMOTE")
+  fit_rf <- train(target ~ .,
+                  data=smote_trainset,
+                  method="rf",
+                  ntree=ntree,
+                  metric=metric,
+                  tuneGrid=expand.grid(mtry=c(mtry)))
+  
+  # get performance on training datums. hopefully not overfit. :-)
+  prediction_rf <- predict(fit_rf, trainset)
+  cm = as.matrix(table("Actual"=trainset$target, "Predicted"=prediction_rf))
+  df_stats <- calc_perf_stats(cm)
+  
+  # store the model
+  save_model_filename=sprintf("../data/models/train_1_window_%s_secs_correlation_and_fft.quick_%s.random_forest.rds", window_size, quick)
+  print(sprintf("Saving RDS: %s", save_model_filename))
+  saveRDS(fit_rf, save_model_filename)
+  
+  # 
+  df_stats
+}
+
+
 show_grid_search_results.rf <- function(filename="../data/models/rf_grid_search.csv") {
   # > head(show_grid_search_results.rf())
   # precision    recall        F1 ntree mtry   metric window_size
@@ -351,8 +352,6 @@ show_grid_search_results.rf <- function(filename="../data/models/rf_grid_search.
   # 121 0.2722213 0.4697898 0.3443397    50   74    Kappa          30
   # 74  0.2706729 0.4539553 0.3389850   300   74 Accuracy          60
   # 154 0.2706729 0.4539553 0.3389850   300   74    Kappa          60
-  
-  
   
   df_stats <- read.csv(filename, header=T, stringsAsFactors = F)
   ord <- order(df_stats$F1, df_stats$recall, decreasing = T)

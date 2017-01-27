@@ -140,6 +140,13 @@ glm.kfold.grid_search <- function(task){
   all_stats_df
 }
 
+glm.train_full <- function(window_size=30, quick=T, weight_interictal=1.0, weight_preictal=1.0) {
+  # TODO
+  
+  # train the GLM model using the parameters found during the grid search
+  set.seed(1234)
+}
+
 show_grid_search_results.glm <- function(filename="../data/models/glm_grid_search.csv") {
   # > head(show_grid_search_results.glm())
   # precision     recall         F1 weight_preictal weight_interictal window_size

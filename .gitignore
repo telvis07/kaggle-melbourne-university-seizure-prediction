@@ -1,6 +1,7 @@
 .RData
 .Rhistory
 .DS_Store
+.screenrc
 data
 R/*.png
 R/*.txt
