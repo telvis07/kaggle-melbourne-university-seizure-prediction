@@ -140,11 +140,44 @@ glm.kfold.grid_search <- function(task){
   all_stats_df
 }
 
-glm.train_full <- function(window_size=30, quick=T, weight_interictal=1.0, weight_preictal=1.0) {
-  # TODO
+glm.train_full <- function(window_size=30, quick=T, weight_interictal=0.25, weight_preictal=1.0) {
+  # precision     recall         F1 weight_preictal weight_interictal window_size
+  # 4 0.3019874 0.40059894 0.34261546               1              0.25          30
+  set.seed(1234)
+  
+  
+  # load the META training data
+  kfold_trainfile <- sprintf("train_meta_1_MODEL_1_window_%s_secs_correlation_and_fft.kfold.quick_%s.txt", window_size, quick)
+  trainset <- read.csv(kfold_trainfile, header=T, stringsAsFactors = F)
+  
+  # group trainset by id (filename)
+  trainset.byid <- group_meta_trainset_by_id(trainset)
+  print(sprintf("trainset.byid nrow: %s", nrow(trainset.byid)))
   
   # train the GLM model using the parameters found during the grid search
-  set.seed(1234)
+  train_weights <- sapply(trainset.byid$target, function(x){
+    ifelse(x=='preictal', weight_preictal, weight_interictal)
+  })
+  
+  
+  # train a glm model
+  fit_glm <- train(target ~ preictal_count + interictal_count,
+                   data= trainset.byid,
+                   preProcess=c("center","scale"),
+                   method="glm", family="binomial", weights=train_weights)
+  
+  # get performance on training datums. hopefully not overfit. :-)
+  predictions <- predict(fit_glm, trainset.byid)
+  cm = as.matrix(table("Actual"=trainset.byid$target, "Predicted"=predictions))
+  df_stats <- calc_perf_stats(cm)
+  
+  # store the model
+  save_model_filename=sprintf("../data/models/train_1_window_%s_secs_correlation_and_fft.quick_%s.glm_ensemble.rds", window_size, quick)
+  print(sprintf("Saving RDS: %s", save_model_filename))
+  saveRDS(fit_glm, save_model_filename)
+  
+  # 
+  df_stats
 }
 
 show_grid_search_results.glm <- function(filename="../data/models/glm_grid_search.csv") {

@@ -1,6 +1,6 @@
 # generate features for various window sizes
 source("correlation_features.R")
-source("sample_data.R")
+source("glm_grid_search.R")
 source("utils.R")
 library(DMwR)
 library(dplyr)
@@ -8,104 +8,90 @@ library(ggplot2)
 library(pROC)
 
 
-predict_kaggle_rf_glm <- function(){
+predict_kaggle_rf_glm <- function(window_size=30, patient_num=1, quick=T){
   
-  # train the RF model using the parameters found during the grid search (see show_grid_search_results())
-  #     precision    recall        F1 ntree mtry   metric window_size
-  # 41  0.2722213 0.4697898 0.3443397    50   74 Accuracy          30
-  
-  
-  
-  # load the model
-  rf_model_filename=sprintf("../data/models/train_1_window_%s_secs_correlation_and_fft.quick_%s.random_forest.rds", 
-                            window_size, quick)
-  
-  print("Loading models")
+  # load the RF model
+  rf_model_filename = sprintf("../data/models/train_1_window_%s_secs_correlation_and_fft.quick_%s.random_forest.rds", window_size, quick)
+  print(sprintf("Loading RF model: %s", rf_model_filename))
   fit_rf <- readRDS(rf_model_filename)
   
-  # TODO: load glm model from grid search
+  # lod the GLM model
+  glm_model_filename <- sprintf("../data/models/train_1_window_%s_secs_correlation_and_fft.quick_%s.glm_ensemble.rds", window_size, quick)
+  print(sprintf("Loading GLM model: %s", glm_model_filename))
+  fit_glm <- readRDS(glm_model_filename)
+  
+  # load the test data
+  testing_filename = sprintf("../data/features/corr_fft_basicstats.20161202/test_%s_new_window_%s_secs_correlation_and_fft.testing.txt", 
+                             patient_num,
+                             window_size)
+  print(sprintf("loading TEST data: %s", testing_filename))
+  
+  # load the test data
+  testset <- load_window_features(output_filename=testing_filename)
+  
+  # get all the filenames
+  all_test_filenames = unique(testset$id)
+  
+  # remove rows with all NA for features
+  testset <- testset[rowSums(is.na(testset)) == 0,]
+  testset$target <- factor(testset$target, levels=c('interictal', 'preictal'))
+  
+  # create meta trainset
+  testset_meta <- subset(testset, select=c(id))
+  testset_meta <- mutate(testset_meta, M1=NA)
+  
+  # predict on 30 second windows using the RF model
+  testset_meta$M1 <- predict(fit_rf, testset)
+  
+  print("Window Predictions using RF")
+  print(table(testset_meta$M1))
+  # print(table(testset_meta$target))
+  
+  # Now group testset predictions by id (filename)
+  # returns id, preictal_count, interictal_count
+  testset_meta.byid <- group_meta_trainset_by_id(testset_meta)
+  print(sprintf("testset.byid nrow: %s", nrow(testset_meta.byid)))
+  
+  # now predict using GLM(preictal_count, interictal_count)
+  testset_meta.byid$target <- predict(fit_glm, testset_meta.byid)
+  
+  # now let's get a quick plot of our predictions
+  p <- ggplot(data=testset_meta.byid, aes(x=preictal_count, y=interictal_count, color=target)) +
+    geom_point(position = position_jitter(w = 0.3, h = 0.3))
+  labs(title="GLM class submission labels")
+  print(p)
+  dev.copy(png, width = 960, height = 960, units = "px", sprintf("test_%s_pred_window_%s.png", patient_num, window_size))
+  dev.off()
+  
+  table(testset_meta.byid$target)
+  print(sprintf("number of filenames in raw data: %s",length(all_test_filenames)))
+  print(sprintf("number of filenames in the predictions: %s", dim(testset_meta.byid)[1]))
+  
+  # unfortunately, some segment files had all NA features for all windows
+  # so just guess 'interictal' for missing files
+  submission_df <- merge(data.frame(id=all_test_filenames), 
+                         subset(testset_meta.byid, select=c(id, target)), 
+                         by="id", all.x=T)
+  na_targets <- is.na(submission_df$target)
+  submission_df[na_targets,]$target = "interictal"
+  
+  # now change 'interical', 'preictal' factor strings to '0', '1'
+  submission_df$target = factor(submission_df$target, levels=c('interictal', 'preictal'), labels=c(0, 1))
+  
+  # finally, let's create a file with submissions
+  submission_filename = sprintf("test_%s_new_window_%s_secs_quick_%s_predictions.csv",
+                                patient_num,
+                                window_size,
+                                quick)
+  
+  print(sprintf("Writing predictions to csv: %s", submission_filename))
+  write.csv(submission_df, submission_filename, row.names = F)
+  
+  submission_df
 }
 
 
-ensemble_modeling.1.rf.train <- function(window_size = 30, quick=T) {
-  # TODO: Grid Search
-  # http://machinelearningmastery.com/tuning-machine-learning-models-using-the-caret-r-package/
-  features_filename = sprintf("../data/features/corr_fft_basicstats.20161202/train_1_window_%s_secs_correlation_and_fft.testing.txt", 
-                            window_size)
-  train_1_preds_filename = sprintf("../data/features/train_1_window_%s_secs_correlation_and_fft.predictions.txt", 
-                              window_size)
-  save_model_filename=sprintf("../data/models/train_1_window_%s_secs_correlation_and_fft.random_forest.rds", window_size)
-  
-  set.seed(1234)
-  
-  print(sprintf("Loading: %s", features_filename))
-  trainset <- load_window_features(output_filename=features_filename)
-  
-  # remove rows that are all None
-  trainset <- trainset[rowSums(is.na(trainset)) == 0,]
-  trainset$target <- factor(trainset$target, levels=c(0,1), labels=c('interictal', 'preictal'))
-  
-  if (quick){
-    # Sample for testing!!! build models faster...
-    trainset <- sample_data(trainset, n_neg_samples=1000, n_pos_samples=500)
-    ntree=10
-  } else {
-    ntree = 100
-  }
-  
-  # get the metadata cols, 
-  trainset.2 <- subset(trainset, select=c(id, window_id, segnum, n_dropout_rows, target))
-  # remove metadata cols
-  trainset <- subset(trainset, select=-c(id, window_id, segnum, n_dropout_rows))
-  
-  # train/test split
-  inTrain = createDataPartition(trainset$target, p = 3/4)[[1]]
-  training = trainset[ inTrain,]
-  testing = trainset[-inTrain,]
-  
-  # smote
-  smote_train <- SMOTE(target ~ ., data=training)
-  print("smote info")
-  print(table(smote_train$target))
-  
-  print("Training RF using test/train split")
-  grid <- expand.grid(mtry=c(2,38,74,110,300), ntree=c(5,10,50,100,500))
-  fit_rf <- train(target ~ ., data=smote_train, method="rf", 
-                  # ntree=ntree,
-                  # tuneLength=10,
-                  trControl = trainControl(allowParallel=T, method="cv", number=4))
-  prediction_rf <- predict(fit_rf, testing)
-  print("Predictions RF")
-  confuse_rf <- confusionMatrix(prediction_rf, testing$target, positive='preictal')
-  print(confuse_rf)
-  print(fit_rf)
-  print(summary(fit_rf))
-  
-  fit_rf <- fit_rf$finalModel
-  
-  # Train with all the DATA with SMOTE
-  # print("SMOTE all the datums")
-  # smote_trainset <- SMOTE(target ~ ., data=trainset)
-  # print("Train with all the DATA with SMOTE")
-  # fit_rf <- train(target ~ ., 
-  #                 data=smote_trainset, 
-  #                 method="rf", 
-  #                 ntree=ntree,
-  #                 trControl = trainControl(allowParallel=T, method="cv", number=4))
-  
-  trainset.2$prediction <- predict(fit_rf, trainset)
-  confuse_rf <- confusionMatrix(trainset.2$prediction, trainset$target, positive='preictal')
-  print(confuse_rf)
-  
-  # trainset <- subset(trainset, select=-c(id, window_id, segnum, fft_phase_entropy, n_dropout_rows))
-  write.csv(trainset.2, train_1_preds_filename, row.names = F)
-  print(sprintf("Wrote : %s", train_1_preds_filename))
-  
-  print(sprintf("Saving RDS: %s", save_model_filename))
-  saveRDS(fit_rf, save_model_filename)
-  train_1_preds_filename
 
-}
 
 
 ensemble.2.glm <- function(window_size = 30, patient_num = 1) {
@@ -262,7 +248,6 @@ ensemble.2.glm <- function(window_size = 30, patient_num = 1) {
   print(p)
   dev.copy(png, width = 960, height = 960, units = "px", sprintf("test_%s_pred_window_%s.png", patient_num, window_size))
   dev.off()
-  
   
   # write features with IDs
   print(sprintf("Wrote to : %s", test_2_filename))
