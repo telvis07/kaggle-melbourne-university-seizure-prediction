@@ -6,3 +6,6 @@ data
 R/*.png
 R/*.txt
 R/*.csv
+data.zip
+docs/
+rsync.sh

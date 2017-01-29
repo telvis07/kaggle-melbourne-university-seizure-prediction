@@ -5,8 +5,6 @@ source("utils.R")
 library(DMwR)
 library(dplyr)
 library(ggplot2)
-library(pROC)
-
 
 predict_kaggle_rf_glm <- function(window_size=30, patient_num=1, quick=T){
   
@@ -59,9 +57,8 @@ predict_kaggle_rf_glm <- function(window_size=30, patient_num=1, quick=T){
   p <- ggplot(data=testset_meta.byid, aes(x=preictal_count, y=interictal_count, color=target)) +
     geom_point(position = position_jitter(w = 0.3, h = 0.3))
   labs(title="GLM class submission labels")
-  print(p)
-  dev.copy(png, width = 960, height = 960, units = "px", sprintf("test_%s_pred_window_%s.png", patient_num, window_size))
-  dev.off()
+  save_plot_filename = sprintf("train_%s_window_%s_quick_%s_preds.png", patient_num, window_size, quick)
+  save_plot(p, save_plot_filename)
   
   table(testset_meta.byid$target)
   print(sprintf("number of filenames in raw data: %s",length(all_test_filenames)))
@@ -90,6 +87,33 @@ predict_kaggle_rf_glm <- function(window_size=30, patient_num=1, quick=T){
   submission_df
 }
 
+combine_submission_files <- function(dirname="../data/submissions"){
+  filenames = c(
+    "../data/submissions/test_1_new_window_30_secs_quick_FALSE_predictions.csv",
+    "../data/submissions/test_2_new_window_30_secs_quick_FALSE_predictions.csv",
+    "../data/submissions/test_3_new_window_30_secs_quick_FALSE_predictions.csv"
+  )
+  
+  submission_df <- data.frame()
+  
+  for (filename in filenames){
+    df <- read.csv(filename, header = T, stringsAsFactors = F)
+    submission_df <- rbind(submission_df, df)
+  }
+  
+  # finally, let's create a file with submissions
+  submission_filename = "test_ALL_new_window_30_secs_predictions.csv"
+  
+  names(submission_df) <- c("File", "Class")
+  
+  
+  print(sprintf("Writing predictions to csv: %s", submission_filename))
+  write.csv(submission_df, submission_filename, row.names = F)
+  
+  
+  submission_df
+  
+}
 
 
 
