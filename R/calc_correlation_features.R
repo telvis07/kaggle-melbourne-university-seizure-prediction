@@ -52,7 +52,7 @@ run_features.test <- function(){
 }
 
 print("Running : run_features.train")
-run_features.train()
+# run_features.train()
 
 print("Running : run_features.test")
-run_features.test()
+# run_features.test()
