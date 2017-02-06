@@ -13,7 +13,7 @@ My Approach:
 
 - Extract basic stats and FFT features for non-overlapping 30-second iEEG windows
 - Detect signal drop out and impute missing data with mean for each feature per window
-- Use model stacking to 
+- Predict seizure and non-seizure segments using a stacked model.
 
 
 Overview of Stacked Model
