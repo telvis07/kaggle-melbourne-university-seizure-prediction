@@ -39,17 +39,16 @@ GLM
 Model Parameters
 ========================================================
 
-Random Forest
-* [R randomForest module](https://cran.r-project.org/web/packages/randomForest/index.html)
+[RandomForest](https://cran.r-project.org/web/packages/randomForest/index.html)
 * Number of Trees (ntree) - `50`
 * Number of variables randomly sampled as candidates at each split (mtry) - `74`
 * Metric - `Accuracy`
 * Number training folds - `5`
+* Use SMOTE due to `preictal`/`interictal` class imbalance
 
 ***
 
-GLM
-* [R glm module](https://stat.ethz.ch/R-manual/R-patched/library/stats/html/glm.html)
+[GLM](https://stat.ethz.ch/R-manual/R-patched/library/stats/html/glm.html)
 * Weight for `Preictal` samples: `1.0`
 * Weight for `Interictal` samples : `0.25`
 * Number training folds - `5`
