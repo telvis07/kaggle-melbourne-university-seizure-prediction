@@ -57,13 +57,15 @@ GLM
 GLM Predictions
 ========================================================
 
-![GLM Predictions](images/train_1_window_30_quick_FALSE_preds.png)
-
-***
 * Each point represents a 10-minute EEG segment file
 * X-axis is the number of 30-second window predicted as `seizures` by the RF
 * X-axis is the number of 30-second window predicted as `non-seizures` by the RF
 * The closer to an axis, the more certain the predicion
+
+***
+
+![GLM Predictions](images/train_1_window_30_quick_FALSE_preds.png)
+
 
 Final Thoughts
 ========================================================
