@@ -72,5 +72,6 @@ Final Thoughts
 * This is my first Kaggle competition. I acheived my goal of making a competition submission. [See my profile](https://www.kaggle.com/telvis).
 * I submitted after the deadline but my submission would have ranked 391 of 2440 submissions. [Screenshot](./images/kaggle_eeg_submission_capture.png) 
 * The [Kaggle model stacking tutorial](http://blog.kaggle.com/2016/12/27/a-kagglers-guide-to-model-stacking-in-practice/) helped me understand cross-fold validation with stacked models.
-* [Deep's Kernel](https://www.kaggle.com/deepcnn/melbourne-university-seizure-prediction/feature-extractor-matlab2python-translated) and [Tony Reina's Kernel](https://www.kaggle.com/treina/melbourne-university-seizure-prediction/feature-extractor-matlab2python-translated) helped me understand EEG features. 
+* [Deep's Kernel](https://www.kaggle.com/deepcnn/melbourne-university-seizure-prediction/feature-extractor-matlab2python-translated) and [Tony Reina's Kernel](https://www.kaggle.com/treina/melbourne-university-seizure-prediction/feature-extractor-matlab2python-translated) helped me understand EEG features.
+* Special thanks to [Hassan Kingravi](http://hassanakingravi.com/) for suggesting the stacked model.
 
